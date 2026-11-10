@@ -5,6 +5,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
+import androidx.test.core.app.ApplicationProvider
+import com.app.reserve.core.application.ReserveApplication
 import com.app.reserve.core.database.AccountEntity
 import com.app.reserve.core.database.CategoryEntity
 import com.app.reserve.core.database.TransactionEntity
@@ -17,6 +19,7 @@ import com.app.reserve.feature.transactions.TransactionsScreen
 import java.time.LocalDate
 import org.junit.Rule
 import org.junit.Test
+import org.junit.Assert.assertTrue
 
 /**
  * Lightweight Compose smoke checks. These render real screens with fixed data
@@ -38,6 +41,15 @@ class ComposeSmokeTest {
         timestamp = Dates.toTimestamp(LocalDate.of(2026, 11, 3)),
         note = "Lunch"
     )
+
+    @Test
+    fun applicationClassIsRegisteredInManifest() {
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        assertTrue(
+            "ReserveApplication must be registered as android:name in AndroidManifest.xml",
+            context is ReserveApplication
+        )
+    }
 
     @Test
     fun transactionRowShowsNoteAndAmount() {

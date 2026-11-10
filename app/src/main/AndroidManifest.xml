@@ -3,6 +3,7 @@
 
     <!-- Reserve is strictly offline: no INTERNET permission, no network SDKs. -->
     <application
+        android:name=".core.application.ReserveApplication"
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
