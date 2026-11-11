@@ -1,4 +1,4 @@
-# Reserve v1.3.0
+# Reserve
 
 > A privacy-first, offline expense tracker with local SMS automation and a premium minimalist design.
 
