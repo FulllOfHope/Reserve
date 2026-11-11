@@ -96,6 +96,25 @@ interface AccountDao {
 }
 
 @Dao
+interface SmsImportDao {
+    /**
+     * IGNORE makes dedupe atomic: a duplicate fingerprint returns -1 and the
+     * caller never touches balances or transactions.
+     */
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insert(entry: SmsImportEntity): Long
+
+    @Query("DELETE FROM sms_imports WHERE fingerprint = :fingerprint")
+    suspend fun deleteByFingerprint(fingerprint: String)
+
+    @Query("SELECT COUNT(*) FROM sms_imports")
+    suspend fun count(): Int
+
+    @Query("DELETE FROM sms_imports")
+    suspend fun clear()
+}
+
+@Dao
 interface BudgetDao {
     @Query("SELECT * FROM budgets ORDER BY monthYear DESC")
     fun observeAll(): Flow<List<BudgetEntity>>

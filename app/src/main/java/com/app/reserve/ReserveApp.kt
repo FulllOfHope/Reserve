@@ -116,7 +116,12 @@ fun ReserveApp(initialOpenAddSheet: Boolean = false) {
     )
     val settingsViewModel: SettingsViewModel = viewModel(
         factory = viewModelFactory {
-            initializer { SettingsViewModel(application.container.settings) }
+            initializer {
+                SettingsViewModel(
+                    settingsDataStore = application.container.settings,
+                    smsImporter = application.container.smsImporter
+                )
+            }
         }
     )
 
@@ -300,15 +305,37 @@ private fun MainNavigation(
     ) { permissions ->
         val granted = permissions.entries.all { it.value }
         if (granted) {
-            toast("SMS parsing active")
+            toast("Scanning your SMS inbox…")
+            settingsViewModel.scanSms()
+        } else {
+            toast("SMS capture stays off until permission is granted.")
         }
     }
 
     LaunchedEffect(Unit) {
         if (androidx.core.content.ContextCompat.checkSelfPermission(
-                context, 
-                android.Manifest.permission.RECEIVE_SMS
+                context,
+                android.Manifest.permission.READ_SMS
             ) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            smsPermissionLauncher.launch(
+                arrayOf(
+                    android.Manifest.permission.RECEIVE_SMS,
+                    android.Manifest.permission.READ_SMS
+                )
+            )
+        }
+    }
+
+    // Ask for permission on first use, otherwise scan immediately. The
+    // permission callback kicks off the same scan once the user approves.
+    val onScanSms: () -> Unit = {
+        if (androidx.core.content.ContextCompat.checkSelfPermission(
+                context,
+                android.Manifest.permission.READ_SMS
+            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) {
+            settingsViewModel.scanSms()
+        } else {
             smsPermissionLauncher.launch(
                 arrayOf(
                     android.Manifest.permission.RECEIVE_SMS,
@@ -589,7 +616,10 @@ private fun MainNavigation(
                                         importCsv = { ledgerViewModel.importCsv(it) },
                                         createBackup = { ledgerViewModel.createBackup() },
                                         restoreBackup = { ledgerViewModel.restoreBackup(it) },
-                                        onBackupCreated = { settingsViewModel.markBackupNow() }
+                                        onBackupCreated = { settingsViewModel.markBackupNow() },
+                                        smsScanning = settingsViewModel.smsScanning.collectAsStateWithLifecycle().value,
+                                        smsScanMessage = settingsViewModel.smsScanMessage.collectAsStateWithLifecycle().value,
+                                        onScanSms = onScanSms
                                     )
                                 }
                             }
@@ -630,7 +660,10 @@ private fun MainNavigation(
                             importCsv = { ledgerViewModel.importCsv(it) },
                             createBackup = { ledgerViewModel.createBackup() },
                             restoreBackup = { ledgerViewModel.restoreBackup(it) },
-                            onBackupCreated = { settingsViewModel.markBackupNow() }
+                            onBackupCreated = { settingsViewModel.markBackupNow() },
+                            smsScanning = settingsViewModel.smsScanning.collectAsStateWithLifecycle().value,
+                            smsScanMessage = settingsViewModel.smsScanMessage.collectAsStateWithLifecycle().value,
+                            onScanSms = onScanSms
                         )
                     }
                     composable(

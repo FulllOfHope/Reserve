@@ -4,6 +4,7 @@ import android.app.Application
 import com.app.reserve.core.data.ReserveRepository
 import com.app.reserve.core.database.ReserveDatabase
 import com.app.reserve.core.datastore.SettingsDataStore
+import com.app.reserve.feature.sms.SmsImporter
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -20,6 +21,9 @@ class ReserveApplication : Application() {
         container.scope.launch {
             container.repository.ensureSeeded()
             container.repository.generateDueRecurring()
+            // Automatic backfill: the first run reads the whole inbox, later
+            // runs only the recent overlap. No-op until SMS permission exists.
+            runCatching { container.smsImporter.scanInbox() }
         }
     }
 }
@@ -33,4 +37,5 @@ class AppContainer(application: Application) {
     val database: ReserveDatabase = ReserveDatabase.get(application)
     val repository = ReserveRepository(database)
     val settings = SettingsDataStore(application)
+    val smsImporter = SmsImporter(application, repository, settings)
 }

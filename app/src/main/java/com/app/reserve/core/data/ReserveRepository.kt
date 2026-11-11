@@ -6,10 +6,12 @@ import com.app.reserve.core.database.BudgetEntity
 import com.app.reserve.core.database.CategoryEntity
 import com.app.reserve.core.database.RecurringEntity
 import com.app.reserve.core.database.ReserveDatabase
+import com.app.reserve.core.database.SmsImportEntity
 import com.app.reserve.core.database.TransactionEntity
 import com.app.reserve.core.database.TransactionType
 import com.app.reserve.core.domain.Dates
 import com.app.reserve.core.domain.LedgerMath
+import com.app.reserve.core.domain.ParsedSms
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -27,6 +29,7 @@ class ReserveRepository(private val database: ReserveDatabase) {
     private val accountDao get() = database.accountDao()
     private val budgetDao get() = database.budgetDao()
     private val recurringDao get() = database.recurringDao()
+    private val smsImportDao get() = database.smsImportDao()
 
     val transactions: Flow<List<TransactionEntity>> = transactionDao.observeAll()
     val categories: Flow<List<CategoryEntity>> = categoryDao.observeAll()
@@ -330,6 +333,80 @@ class ReserveRepository(private val database: ReserveDatabase) {
         return ImportSummary(imported, skipped)
     }
 
+    /**
+     * Imports parsed SMS rows in one transaction. A fingerprint is written
+     * first, so a message can never create two transactions even if the live
+     * receiver and the inbox backfill run at the same time.
+     */
+    suspend fun importSmsMessages(messages: List<ParsedSms>): SmsImportResult {
+        if (messages.isEmpty()) return SmsImportResult(0, 0)
+        var imported = 0
+        var duplicates = 0
+        database.withTransaction {
+            val accountsByName = accountDao.getAll()
+                .associateByTo(mutableMapOf()) { it.name.lowercase() }
+            val categoriesByKey = categoryDao.getAll()
+                .associateByTo(mutableMapOf()) { "${it.type}|${it.name.lowercase()}" }
+
+            for (message in messages) {
+                val transactionId = UUID.randomUUID().toString()
+                val inserted = smsImportDao.insert(
+                    SmsImportEntity(
+                        fingerprint = message.fingerprint,
+                        transactionId = transactionId,
+                        importedAt = System.currentTimeMillis()
+                    )
+                )
+                if (inserted == -1L) {
+                    duplicates++
+                    continue
+                }
+                try {
+                    val accountKey = message.accountName.lowercase()
+                    val account = accountsByName[accountKey] ?: AccountEntity(
+                        UUID.randomUUID().toString(),
+                        message.accountName,
+                        0L
+                    ).also {
+                        accountDao.insert(it)
+                        accountsByName[accountKey] = it
+                    }
+
+                    val category = message.categoryName?.let { name ->
+                        val key = "${message.type}|${name.lowercase()}"
+                        categoriesByKey[key] ?: CategoryEntity(
+                            UUID.randomUUID().toString(),
+                            name,
+                            "#948B7A",
+                            "other",
+                            message.type
+                        ).also {
+                            categoryDao.insert(it)
+                            categoriesByKey[key] = it
+                        }
+                    }
+
+                    val transaction = TransactionEntity(
+                        id = transactionId,
+                        amount = message.amountMinor,
+                        type = message.type,
+                        categoryId = category?.id,
+                        accountId = account.id,
+                        timestamp = message.timestamp,
+                        note = message.note
+                    )
+                    applyBalance(transaction, reverse = false)
+                    transactionDao.insert(transaction)
+                    imported++
+                } catch (_: Exception) {
+                    // Let a later scan retry this message instead of losing it.
+                    smsImportDao.deleteByFingerprint(message.fingerprint)
+                }
+            }
+        }
+        return SmsImportResult(imported, duplicates)
+    }
+
     private suspend fun findOrCreateAccount(name: String, defaultAccountId: String): AccountEntity {
         val wanted = name.trim().ifBlank { "Imported" }
         accountDao.getAll().firstOrNull { it.name.equals(wanted, ignoreCase = true) }?.let { return it }
@@ -384,3 +461,5 @@ data class ImportedTransaction(
 )
 
 data class ImportSummary(val imported: Int, val skipped: Int)
+
+data class SmsImportResult(val imported: Int, val duplicates: Int)

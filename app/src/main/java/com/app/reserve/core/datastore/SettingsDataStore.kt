@@ -5,11 +5,13 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.app.reserve.core.util.IconSwitcher
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
 val Context.reserveDataStore: DataStore<Preferences> by preferencesDataStore(name = "reserve_settings")
@@ -21,7 +23,9 @@ data class ReserveSettings(
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
     val primaryColorHex: String = "#0FB70F",
     val appIconAlias: String = IconSwitcher.DEFAULT_ALIAS,
-    val lastBackupAt: Long = 0L
+    val lastBackupAt: Long = 0L,
+    val lastSmsScanAt: Long = 0L,
+    val smsImportedTotal: Int = 0
 )
 
 class SettingsDataStore(private val context: Context) {
@@ -32,6 +36,8 @@ class SettingsDataStore(private val context: Context) {
         val PRIMARY_COLOR_HEX = stringPreferencesKey("primary_color_hex")
         val APP_ICON_ALIAS = stringPreferencesKey("app_icon_alias")
         val LAST_BACKUP_AT = longPreferencesKey("last_backup_at")
+        val LAST_SMS_SCAN_AT = longPreferencesKey("last_sms_scan_at")
+        val SMS_IMPORTED_TOTAL = intPreferencesKey("sms_imported_total")
     }
 
     val settings: Flow<ReserveSettings> = context.reserveDataStore.data.map { preferences ->
@@ -42,7 +48,9 @@ class SettingsDataStore(private val context: Context) {
             }.getOrDefault(ThemeMode.SYSTEM),
             primaryColorHex = preferences[PRIMARY_COLOR_HEX] ?: "#0FB70F",
             appIconAlias = preferences[APP_ICON_ALIAS] ?: IconSwitcher.DEFAULT_ALIAS,
-            lastBackupAt = preferences[LAST_BACKUP_AT] ?: 0L
+            lastBackupAt = preferences[LAST_BACKUP_AT] ?: 0L,
+            lastSmsScanAt = preferences[LAST_SMS_SCAN_AT] ?: 0L,
+            smsImportedTotal = preferences[SMS_IMPORTED_TOTAL] ?: 0
         )
     }
 
@@ -66,4 +74,18 @@ class SettingsDataStore(private val context: Context) {
     suspend fun setLastBackupAt(timestamp: Long) {
         context.reserveDataStore.edit { it[LAST_BACKUP_AT] = timestamp }
     }
+
+    suspend fun setLastSmsScanAt(timestamp: Long) {
+        context.reserveDataStore.edit { it[LAST_SMS_SCAN_AT] = timestamp }
+    }
+
+    suspend fun addSmsImported(count: Int) {
+        if (count <= 0) return
+        context.reserveDataStore.edit {
+            it[SMS_IMPORTED_TOTAL] = (it[SMS_IMPORTED_TOTAL] ?: 0) + count
+        }
+    }
+
+    /** One-shot read used by the background scanner. */
+    suspend fun currentSettings(): ReserveSettings = settings.first()
 }

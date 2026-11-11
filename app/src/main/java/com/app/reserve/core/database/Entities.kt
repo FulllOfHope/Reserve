@@ -42,6 +42,18 @@ data class AccountEntity(
     val createdAt: Long = System.currentTimeMillis()
 )
 
+/**
+ * Remembers which SMS have already produced a ledger row. The fingerprint is a
+ * SHA-256 of sender + timestamp + body, so the receiver and the inbox backfill
+ * can overlap without ever importing the same message twice.
+ */
+@Entity(tableName = "sms_imports")
+data class SmsImportEntity(
+    @PrimaryKey val fingerprint: String,
+    val transactionId: String,
+    val importedAt: Long
+)
+
 @Entity(tableName = "budgets")
 data class BudgetEntity(
     @PrimaryKey val id: String,

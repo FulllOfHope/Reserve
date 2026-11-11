@@ -18,7 +18,7 @@ Built with Kotlin, Jetpack Compose, Material 3, Room + SQLCipher, DataStore and 
 ## ✨ Key Features
 
 - **🔐 Encrypted database (SQLCipher, 16 KB aligned)** — The Room database is encrypted with SQLCipher 4 (AES-256). The passphrase is generated on-device with `SecureRandom` and sealed using AES-256-GCM in `EncryptedSharedPreferences`, backed by the Android Keystore. No passphrase is hardcoded or committed. Native libraries are built with 16 KB ELF page alignment (`0x4000`), verified with `readelf` and `zipalign -P 16`.
-- **📩 Offline SMS parsing** — Optional on-device parsing of bank SMS. Reserve reads debit/credit alerts, extracts the amount, and logs a transaction. Messages never leave the device, and the app remains fully usable if the SMS permissions are denied.
+- **📩 Automatic SMS capture** — On first grant, Reserve reads your whole SMS inbox, recognises bank debit/credit alerts, creates the matching bank accounts automatically, assigns categories where the merchant is obvious, updates balances, and suppresses duplicates with a SHA-256 fingerprint. New messages are captured live by a broadcast receiver. Everything is parsed on-device; the app remains fully usable if SMS permission is denied.
 - **🎨 Jetpack Compose UI** — 100% Compose with Material 3. Inter typography, tabular numerals, a floating pill bottom bar, a pager-driven tab shell and a calm, minimal Ente-inspired design system.
 - **🧩 Glance home-screen widget** — A Material 3 Glance widget that shows the current month's spending at a glance and opens Reserve on tap.
 - **📴 Local-first architecture** — Room is the single source of truth; UI state is derived through Kotlin `Flow`. CSV import/export and local JSON backup/restore use the system document picker — no servers involved.
@@ -40,12 +40,23 @@ Built with Kotlin, Jetpack Compose, Material 3, Room + SQLCipher, DataStore and 
 |---|---|
 | No network access | `AndroidManifest.xml` declares no `android.permission.INTERNET`; the merged manifest is checked as part of release verification. |
 | Encrypted at rest | SQLCipher-encrypted Room database; random 256-bit passphrase stored via `EncryptedSharedPreferences`. |
-| SMS stays on-device | `SmsReceiver` parses bank messages locally. It is protected by `android.permission.BROADCAST_SMS`, so only the system can invoke it. |
+| SMS stays on-device | `SmsParser` and `SmsImporter` read bank messages locally. The receiver is protected by `android.permission.BROADCAST_SMS`, so only the system can invoke it. |
+| No duplicate imports | Every message is hashed (sender + timestamp + body) and recorded in `sms_imports`; `INSERT OR IGNORE` makes overlap between the live receiver and inbox backfill harmless. |
 | No tracking | No analytics, advertising, crash-reporting or attribution SDKs. |
 | No accounts | Nothing to sign up for and no identifiers to leak. |
 | Local exports only | CSV / JSON files are written through the Storage Access Framework to a location you choose. |
 
-SMS permissions (`RECEIVE_SMS`, `READ_SMS`) are optional and requested on first launch. Denying them only disables automatic SMS capture.
+SMS permissions (`RECEIVE_SMS`, `READ_SMS`) are optional and requested on first launch. Granting `READ_SMS` starts the one-time inbox backfill automatically; later launches only re-read a three-day overlap. Denying them only disables automatic SMS capture.
+
+### How SMS capture works
+
+1. **Backfill** — after permission is granted (or on the next launch), the importer queries `Telephony.Sms.Inbox` oldest-first and parses every message.
+2. **Recognition** — a message must contain a transaction verb (*debited*, *credited*, *spent*, *withdrawn*, *paid*, *sent*, *transferred*, *received*, *deposited*, *refunded*) plus a currency amount (`₹`, `Rs`, `INR`, or a bare amount after the verb). OTPs, promos, balance-only alerts and personal phone numbers are rejected.
+3. **Accounts** — the sender ID and message body identify the bank (`HDFC Bank`, `State Bank of India`, …); the last four digits of the card/account are kept when present. Missing accounts are created automatically.
+4. **Posting** — the row is written through `ReserveRepository` in the same transaction that updates the account balance, so history and balances never disagree.
+5. **Live capture** — `SmsReceiver` uses `goAsync()` and the same importer, so a new alert lands in the ledger within moments.
+
+Amounts are parsed with `BigDecimal` into `Long` paise — never `Double`.
 
 ---
 
@@ -80,7 +91,7 @@ app/src/main/java/com/app/reserve/
 │   ├── insights/         Donut, top categories, trend
 │   ├── manage/           Accounts, categories, recurring rules
 │   ├── settings/         Settings, theme, lock, import/export
-│   ├── sms/              SMS_RECEIVED broadcast receiver
+│   ├── sms/              Live receiver + inbox importer
 │   ├── transactions/     Searchable, filterable history
 │   └── widget/           Glance app widget
 └── ui/                   Navigation shell, bottom bar, app-lock screen
@@ -90,7 +101,7 @@ app/src/main/java/com/app/reserve/
 - **State** — unidirectional data flow with `StateFlow` / `Flow` and activity-scoped ViewModels.
 - **Persistence** — Room 2.8 with SQLCipher, DataStore Preferences, `Long` minor units.
 - **DI** — a small manual `AppContainer`; no reflection-based framework.
-- **Background work** — `BroadcastReceiver` + `goAsync()` for SMS and Glance for widget updates.
+- **Background work** — `BroadcastReceiver` + `goAsync()` for live SMS, a startup inbox backfill, and Glance for widget updates.
 
 ---
 
@@ -131,7 +142,7 @@ The debug APK is written to `app/build/outputs/apk/debug/app-debug.apk`.
 
 ### Test coverage
 
-- **36 unit tests** — exact minor-unit money formatting/parsing, budget maths and all-expenses budgets, transfer neutrality, CSV round-trip, backup validation, amount-input behaviour.
+- **53 unit tests** — exact minor-unit money formatting/parsing, budget maths and all-expenses budgets, transfer neutrality, CSV round-trip, backup validation, amount-input behaviour, and 17 SMS parsing cases (bank formats, credit-card alerts, Indian digit grouping, balance isolation, OTP/promo/personal-message rejection, fingerprint stability).
 - **3 instrumentation tests** — Compose smoke checks for the transaction row and transactions screen, plus a regression test that asserts `ReserveApplication` is registered in the manifest.
 
 ---

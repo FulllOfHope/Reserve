@@ -38,6 +38,7 @@ import androidx.compose.material.icons.rounded.FileUpload
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.PieChart
 import androidx.compose.material.icons.rounded.Restore
+import androidx.compose.material.icons.rounded.Sms
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -105,7 +106,10 @@ fun SettingsScreen(
     importCsv: suspend (String) -> ImportSummary,
     createBackup: suspend () -> String,
     restoreBackup: suspend (String) -> Boolean,
-    onBackupCreated: () -> Unit
+    onBackupCreated: () -> Unit,
+    smsScanning: Boolean = false,
+    smsScanMessage: String? = null,
+    onScanSms: () -> Unit = {}
 ) {
     val colors = LocalReserveColors.current
     val context = LocalContext.current
@@ -323,6 +327,78 @@ fun SettingsScreen(
                             modifier = Modifier.size(18.dp)
                         )
                     }
+                }
+            }
+
+            // SMS automation block
+            item {
+                SettingsSectionHeader(text = "SMS AUTOMATION")
+                ReserveCard(modifier = Modifier.padding(horizontal = spacing_xxl)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Sms,
+                            contentDescription = null,
+                            tint = colors.primaryDefault,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.size(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Automatic capture",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = colors.textBase
+                            )
+                            Text(
+                                text = "Bank debit and credit alerts become expenses and income. New banks become accounts automatically.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = colors.textLight
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(spacing_md))
+                    val lastScan = settings?.lastSmsScanAt ?: 0L
+                    val captured = settings?.smsImportedTotal ?: 0
+                    Text(
+                        text = if (lastScan == 0L) {
+                            "Not scanned yet"
+                        } else {
+                            "Last scan ${Dates.fullDate(lastScan)} · $captured captured from SMS"
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = colors.textBase
+                    )
+                    if (smsScanMessage != null) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = smsScanMessage,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = colors.textLight
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(spacing_md))
+                    Button(
+                        onClick = onScanSms,
+                        enabled = !smsScanning,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(radius_md),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = colors.primaryDefault,
+                            contentColor = colors.textReverse,
+                            disabledContainerColor = colors.fillDark,
+                            disabledContentColor = colors.textLight
+                        )
+                    ) {
+                        Text(if (smsScanning) "Scanning SMS…" else "Scan SMS inbox now")
+                    }
+                    Spacer(modifier = Modifier.height(spacing_sm))
+                    Text(
+                        text = "Parsing happens entirely on this device. Nothing is uploaded.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = colors.textLighter
+                    )
                 }
             }
 
