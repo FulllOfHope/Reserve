@@ -64,6 +64,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.glance.appwidget.updateAll
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -95,6 +96,7 @@ import com.app.reserve.feature.manage.RecurringScreen
 import com.app.reserve.feature.settings.SettingsScreen
 import com.app.reserve.feature.settings.SettingsViewModel
 import com.app.reserve.feature.transactions.TransactionsScreen
+import com.app.reserve.feature.widget.ReserveWidget
 import com.app.reserve.ui.AppLockScreen
 import com.app.reserve.ui.AppLockViewModel
 import com.app.reserve.ui.ReserveBottomBar
@@ -346,6 +348,12 @@ private fun MainNavigation(
         }
     }
 
+    val onToggleHideAmounts: (Boolean) -> Unit = { hidden ->
+        settingsViewModel.setHideAmounts(hidden) {
+            scope.launch { ReserveWidget().updateAll(context) }
+        }
+    }
+
     val onDelete: (TransactionEntity) -> Unit = { transaction ->
         ledgerViewModel.commitDelete(transaction)
         scope.launch {
@@ -587,7 +595,7 @@ private fun MainNavigation(
                                         onPreviousMonth = { ledgerViewModel.shiftMonth(-1) },
                                         onNextMonth = { ledgerViewModel.shiftMonth(1) },
                                         onOpenMenu = { scope.launch { drawerState.open() } },
-                                        onToggleHideAmounts = { settingsViewModel.setHideAmounts(it) }
+                                        onToggleHideAmounts = onToggleHideAmounts
                                     )
                                     1 -> TransactionsScreen(
                                         state = state,
@@ -607,7 +615,7 @@ private fun MainNavigation(
                                         state = state,
                                         settings = settingsViewModel.settings.collectAsStateWithLifecycle().value,
                                         onToggleBiometric = { settingsViewModel.setBiometricLock(it) },
-                                        onToggleHideAmounts = { settingsViewModel.setHideAmounts(it) },
+                                        onToggleHideAmounts = onToggleHideAmounts,
                                         onThemeMode = { settingsViewModel.setThemeMode(it) },
                                         onSetPrimaryColorHex = { settingsViewModel.setPrimaryColorHex(it) },
                                         onSetAppIconAlias = { settingsViewModel.setAppIconAlias(it) },
@@ -652,7 +660,7 @@ private fun MainNavigation(
                             state = state,
                             settings = settingsViewModel.settings.collectAsStateWithLifecycle().value,
                             onToggleBiometric = { settingsViewModel.setBiometricLock(it) },
-                            onToggleHideAmounts = { settingsViewModel.setHideAmounts(it) },
+                            onToggleHideAmounts = onToggleHideAmounts,
                             onThemeMode = { settingsViewModel.setThemeMode(it) },
                             onSetPrimaryColorHex = { settingsViewModel.setPrimaryColorHex(it) },
                             onSetAppIconAlias = { settingsViewModel.setAppIconAlias(it) },

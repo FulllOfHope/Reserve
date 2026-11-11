@@ -35,8 +35,12 @@ class SettingsViewModel(
         viewModelScope.launch { settingsDataStore.setBiometricLock(enabled) }
     }
 
-    fun setHideAmounts(hidden: Boolean) {
-        viewModelScope.launch { settingsDataStore.setHideAmounts(hidden) }
+    /** [onSaved] runs after the preference is written, so widgets can refresh with the new value. */
+    fun setHideAmounts(hidden: Boolean, onSaved: () -> Unit = {}) {
+        viewModelScope.launch {
+            settingsDataStore.setHideAmounts(hidden)
+            onSaved()
+        }
     }
 
     fun setThemeMode(mode: ThemeMode) {
