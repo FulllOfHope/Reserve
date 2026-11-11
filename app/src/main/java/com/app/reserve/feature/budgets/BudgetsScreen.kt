@@ -42,12 +42,14 @@ import androidx.compose.ui.unit.dp
 import com.app.reserve.core.database.BudgetEntity
 import com.app.reserve.core.designsystem.BudgetBar
 import com.app.reserve.core.designsystem.EmptyState
+import com.app.reserve.core.designsystem.LocalAmountsHidden
 import com.app.reserve.core.designsystem.LocalReserveColors
 import com.app.reserve.core.designsystem.MoneyText
 import com.app.reserve.core.designsystem.MonthSwitcher
 import com.app.reserve.core.designsystem.ReserveCard
 import com.app.reserve.core.designsystem.ScreenTitle
 import com.app.reserve.core.designsystem.SectionLabel
+import com.app.reserve.core.designsystem.formatMoney
 import com.app.reserve.core.designsystem.tabular
 import com.app.reserve.core.domain.BudgetCalculator
 import com.app.reserve.core.domain.Dates
@@ -178,6 +180,7 @@ private fun BudgetRow(
     onDelete: () -> Unit
 ) {
     val colors = LocalReserveColors.current
+    val amountsHidden = LocalAmountsHidden.current
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -193,9 +196,9 @@ private fun BudgetRow(
             )
             Text(
                 text = if (isOver) {
-                    "${Money.format(spent - limit)} over"
+                    "${formatMoney(spent - limit, amountsHidden)} over"
                 } else {
-                    "${Money.format(limit - spent)} left"
+                    "${formatMoney(limit - spent, amountsHidden)} left"
                 },
                 style = MaterialTheme.typography.labelSmall.tabular(),
                 color = if (isOver) colors.warningDefault else colors.textLighter
@@ -215,7 +218,7 @@ private fun BudgetRow(
         Spacer(modifier = Modifier.height(6.dp))
         Row(modifier = Modifier.fillMaxWidth()) {
             Text(
-                text = "${Money.format(spent)} of ${Money.format(limit)}",
+                text = "${formatMoney(spent, amountsHidden)} of ${formatMoney(limit, amountsHidden)}",
                 style = MaterialTheme.typography.labelSmall.tabular(),
                 color = colors.textLight
             )

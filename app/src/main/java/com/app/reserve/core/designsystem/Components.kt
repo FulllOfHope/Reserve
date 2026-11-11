@@ -58,7 +58,6 @@ import com.app.reserve.core.database.CategoryEntity
 import com.app.reserve.core.database.TransactionEntity
 import com.app.reserve.core.database.TransactionType
 import com.app.reserve.core.domain.Dates
-import com.app.reserve.core.domain.Money
 
 @Composable
 fun ReserveCard(
@@ -183,8 +182,9 @@ fun MoneyText(
     showPlus: Boolean = false,
     maxLines: Int = 1
 ) {
+    val hidden = LocalAmountsHidden.current
     Text(
-        text = Money.format(amount, showPlus = showPlus),
+        text = formatMoney(amount, hidden = hidden, showPlus = showPlus),
         modifier = modifier,
         style = style.tabular(),
         color = color,

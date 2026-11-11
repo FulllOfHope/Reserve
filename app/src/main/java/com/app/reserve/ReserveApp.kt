@@ -136,7 +136,8 @@ fun ReserveApp(initialOpenAddSheet: Boolean = false) {
 
     ReserveTheme(
         darkTheme = darkTheme,
-        primaryColorHex = settings?.primaryColorHex ?: "#0FB70F"
+        primaryColorHex = settings?.primaryColorHex ?: "#0FB70F",
+        amountsHidden = settings?.hideAmounts == true
     ) {
         val colors = LocalReserveColors.current
         val biometricAvailable = remember {
@@ -585,7 +586,8 @@ private fun MainNavigation(
                                         onOpenBudgets = { navController.navigate(Routes.Budgets) },
                                         onPreviousMonth = { ledgerViewModel.shiftMonth(-1) },
                                         onNextMonth = { ledgerViewModel.shiftMonth(1) },
-                                        onOpenMenu = { scope.launch { drawerState.open() } }
+                                        onOpenMenu = { scope.launch { drawerState.open() } },
+                                        onToggleHideAmounts = { settingsViewModel.setHideAmounts(it) }
                                     )
                                     1 -> TransactionsScreen(
                                         state = state,
@@ -605,6 +607,7 @@ private fun MainNavigation(
                                         state = state,
                                         settings = settingsViewModel.settings.collectAsStateWithLifecycle().value,
                                         onToggleBiometric = { settingsViewModel.setBiometricLock(it) },
+                                        onToggleHideAmounts = { settingsViewModel.setHideAmounts(it) },
                                         onThemeMode = { settingsViewModel.setThemeMode(it) },
                                         onSetPrimaryColorHex = { settingsViewModel.setPrimaryColorHex(it) },
                                         onSetAppIconAlias = { settingsViewModel.setAppIconAlias(it) },
@@ -649,6 +652,7 @@ private fun MainNavigation(
                             state = state,
                             settings = settingsViewModel.settings.collectAsStateWithLifecycle().value,
                             onToggleBiometric = { settingsViewModel.setBiometricLock(it) },
+                            onToggleHideAmounts = { settingsViewModel.setHideAmounts(it) },
                             onThemeMode = { settingsViewModel.setThemeMode(it) },
                             onSetPrimaryColorHex = { settingsViewModel.setPrimaryColorHex(it) },
                             onSetAppIconAlias = { settingsViewModel.setAppIconAlias(it) },

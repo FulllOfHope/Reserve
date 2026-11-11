@@ -39,6 +39,7 @@ import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.PieChart
 import androidx.compose.material.icons.rounded.Restore
 import androidx.compose.material.icons.rounded.Sms
+import androidx.compose.material.icons.rounded.VisibilityOff
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -95,6 +96,7 @@ fun SettingsScreen(
     state: LedgerState,
     settings: ReserveSettings?,
     onToggleBiometric: (Boolean) -> Unit,
+    onToggleHideAmounts: (Boolean) -> Unit = {},
     onThemeMode: (ThemeMode) -> Unit,
     onSetPrimaryColorHex: (String) -> Unit = {},
     onSetAppIconAlias: (String) -> Unit = {},
@@ -406,6 +408,44 @@ fun SettingsScreen(
             item {
                 SettingsSectionHeader(text = "PRIVACY")
                 ReserveCard(modifier = Modifier.padding(horizontal = spacing_xxl)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.VisibilityOff,
+                            contentDescription = null,
+                            tint = colors.primaryDefault,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.size(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Hide amounts",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = colors.textBase
+                            )
+                            Text(
+                                text = "Mask balances and every transaction amount, for using Reserve in public.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = colors.textLight
+                            )
+                        }
+                        Switch(
+                            checked = settings?.hideAmounts == true,
+                            onCheckedChange = onToggleHideAmounts,
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = colors.textReverse,
+                                checkedTrackColor = colors.primaryDefault,
+                                uncheckedThumbColor = colors.textLighter,
+                                uncheckedTrackColor = colors.fillDark,
+                                uncheckedBorderColor = colors.strokeFaint
+                            )
+                        )
+                    }
+
+                    ReserveDivider(modifier = Modifier.padding(vertical = spacing_lg))
+
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically

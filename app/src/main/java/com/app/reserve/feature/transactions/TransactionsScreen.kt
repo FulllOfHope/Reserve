@@ -52,12 +52,13 @@ import androidx.compose.ui.unit.dp
 import com.app.reserve.core.database.TransactionEntity
 import com.app.reserve.core.database.TransactionType
 import com.app.reserve.core.designsystem.EmptyState
+import com.app.reserve.core.designsystem.LocalAmountsHidden
 import com.app.reserve.core.designsystem.LocalReserveColors
 import com.app.reserve.core.designsystem.MonthSwitcher
 import com.app.reserve.core.designsystem.ReserveDivider
 import com.app.reserve.core.designsystem.TransactionRow
+import com.app.reserve.core.designsystem.formatMoney
 import com.app.reserve.core.domain.Dates
-import com.app.reserve.core.domain.Money
 import com.app.reserve.feature.ledger.LedgerState
 import java.time.LocalDate
 
@@ -231,6 +232,7 @@ private fun SearchField(query: String, onQueryChange: (String) -> Unit) {
 @Composable
 private fun DayHeader(date: LocalDate, spent: Long) {
     val colors = LocalReserveColors.current
+    val amountsHidden = LocalAmountsHidden.current
     val label = when (date) {
         LocalDate.now() -> "Today"
         LocalDate.now().minusDays(1) -> "Yesterday"
@@ -250,7 +252,7 @@ private fun DayHeader(date: LocalDate, spent: Long) {
         )
         if (spent > 0) {
             Text(
-                text = "-${Money.format(spent)}",
+                text = if (amountsHidden) formatMoney(spent, hidden = true) else "-${formatMoney(spent, hidden = false)}",
                 style = MaterialTheme.typography.labelSmall,
                 color = colors.textLighter
             )

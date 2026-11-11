@@ -59,7 +59,9 @@ import com.app.reserve.core.designsystem.CategoryChip
 import com.app.reserve.core.designsystem.EnteButton
 import com.app.reserve.core.designsystem.EnteRadius
 import com.app.reserve.core.designsystem.EnteSpacing
+import com.app.reserve.core.designsystem.LocalAmountsHidden
 import com.app.reserve.core.designsystem.LocalReserveColors
+import com.app.reserve.core.designsystem.formatMoney
 import com.app.reserve.core.designsystem.radius_md
 import com.app.reserve.core.designsystem.radius_xl
 import com.app.reserve.core.designsystem.spacing_lg
@@ -636,6 +638,7 @@ private fun AccountPickerDialog(
     onDismiss: () -> Unit
 ) {
     val colors = LocalReserveColors.current
+    val amountsHidden = LocalAmountsHidden.current
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = colors.fillLight,
@@ -665,7 +668,7 @@ private fun AccountPickerDialog(
                                 color = if (account.id == selectedId) colors.primaryDefault else colors.textBase
                             )
                             Text(
-                                text = com.app.reserve.core.domain.Money.format(account.balance),
+                                text = formatMoney(account.balance, amountsHidden),
                                 style = MaterialTheme.typography.labelSmall,
                                 color = colors.textLighter
                             )

@@ -35,6 +35,8 @@ import androidx.glance.text.TextStyle
 import com.app.reserve.MainActivity
 import com.app.reserve.R
 import com.app.reserve.core.database.ReserveDatabase
+import com.app.reserve.core.datastore.SettingsDataStore
+import com.app.reserve.core.designsystem.HiddenAmount
 import com.app.reserve.core.domain.Dates
 import com.app.reserve.core.domain.Money
 import kotlinx.coroutines.flow.first
@@ -49,6 +51,9 @@ class ReserveWidget : GlanceAppWidget() {
             it.type == com.app.reserve.core.database.TransactionType.EXPENSE && 
             Dates.monthKey(Dates.toLocalDate(it.timestamp)) == monthKey 
         }.sumOf { it.amount }
+        val hideAmounts = runCatching {
+            SettingsDataStore(context).currentSettings().hideAmounts
+        }.getOrDefault(false)
 
         provideContent {
             GlanceTheme {
@@ -69,7 +74,7 @@ class ReserveWidget : GlanceAppWidget() {
                             )
                         )
                         Text(
-                            text = Money.format(spentThisMonth),
+                            text = if (hideAmounts) HiddenAmount else Money.format(spentThisMonth),
                             style = TextStyle(
                                 color = androidx.glance.unit.ColorProvider(Color(0xFF1C1C1E)), // textBase
                                 fontSize = androidx.compose.ui.unit.TextUnit(20f, androidx.compose.ui.unit.TextUnitType.Sp),

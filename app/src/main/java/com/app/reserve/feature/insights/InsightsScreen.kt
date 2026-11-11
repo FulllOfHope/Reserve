@@ -30,6 +30,8 @@ import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.dp
 import com.app.reserve.core.designsystem.EmptyState
+import com.app.reserve.core.designsystem.HiddenAmount
+import com.app.reserve.core.designsystem.LocalAmountsHidden
 import com.app.reserve.core.designsystem.LocalReserveColors
 import com.app.reserve.core.designsystem.MoneyText
 import com.app.reserve.core.designsystem.MonthSwitcher
@@ -50,6 +52,7 @@ fun InsightsScreen(
     onNextMonth: () -> Unit
 ) {
     val colors = LocalReserveColors.current
+    val amountsHidden = LocalAmountsHidden.current
     val breakdown = BudgetCalculator.breakdown(
         state.visibleTransactions,
         state.monthYear,
@@ -145,7 +148,7 @@ fun InsightsScreen(
                             state.monthYear,
                             6
                         )
-                        TrendChart(series = series)
+                        TrendChart(series = series, amountsHidden = amountsHidden)
                         Spacer(modifier = Modifier.height(8.dp))
                         Row(modifier = Modifier.fillMaxWidth()) {
                             series.forEach { month ->
@@ -274,7 +277,11 @@ private fun DonutChart(
 }
 
 @Composable
-private fun TrendChart(series: List<com.app.reserve.core.domain.MonthTotal>, modifier: Modifier = Modifier) {
+private fun TrendChart(
+    series: List<com.app.reserve.core.domain.MonthTotal>,
+    amountsHidden: Boolean,
+    modifier: Modifier = Modifier
+) {
     val colors = LocalReserveColors.current
     val textMeasurer = androidx.compose.ui.text.rememberTextMeasurer()
     
@@ -329,7 +336,9 @@ private fun TrendChart(series: List<com.app.reserve.core.domain.MonthTotal>, mod
                 )
                 
                 // Draw text above income bar
-                val incomeText = androidx.compose.ui.text.AnnotatedString(Money.format(monthData.income).replace("₹", "").trim())
+                val incomeText = androidx.compose.ui.text.AnnotatedString(
+                    if (amountsHidden) HiddenAmount else Money.format(monthData.income).replace("₹", "").trim()
+                )
                 val textLayoutResult = textMeasurer.measure(incomeText, textStyle)
                 drawText(
                     textLayoutResult = textLayoutResult,
@@ -348,7 +357,9 @@ private fun TrendChart(series: List<com.app.reserve.core.domain.MonthTotal>, mod
                 )
                 
                 // Draw text above spent bar
-                val spentText = androidx.compose.ui.text.AnnotatedString(Money.format(monthData.spent).replace("₹", "").trim())
+                val spentText = androidx.compose.ui.text.AnnotatedString(
+                    if (amountsHidden) HiddenAmount else Money.format(monthData.spent).replace("₹", "").trim()
+                )
                 val textLayoutResult = textMeasurer.measure(spentText, textStyle)
                 drawText(
                     textLayoutResult = textLayoutResult,

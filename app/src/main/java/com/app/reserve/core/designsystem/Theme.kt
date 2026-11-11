@@ -17,6 +17,7 @@ import androidx.core.view.WindowCompat
 fun ReserveTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     primaryColorHex: String = "#0FB70F",
+    amountsHidden: Boolean = false,
     content: @Composable () -> Unit
 ) {
     val view = LocalView.current
@@ -77,7 +78,10 @@ fun ReserveTheme(
         )
     }
 
-    CompositionLocalProvider(LocalReserveColors provides colors) {
+    CompositionLocalProvider(
+        LocalReserveColors provides colors,
+        LocalAmountsHidden provides amountsHidden
+    ) {
         MaterialTheme(
             colorScheme = colorScheme,
             typography = ReserveTypography,

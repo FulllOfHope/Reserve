@@ -35,6 +35,10 @@ class SettingsViewModel(
         viewModelScope.launch { settingsDataStore.setBiometricLock(enabled) }
     }
 
+    fun setHideAmounts(hidden: Boolean) {
+        viewModelScope.launch { settingsDataStore.setHideAmounts(hidden) }
+    }
+
     fun setThemeMode(mode: ThemeMode) {
         viewModelScope.launch { settingsDataStore.setThemeMode(mode) }
     }

@@ -20,6 +20,7 @@ enum class ThemeMode { SYSTEM, LIGHT, DARK }
 
 data class ReserveSettings(
     val biometricLock: Boolean = false,
+    val hideAmounts: Boolean = false,
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
     val primaryColorHex: String = "#0FB70F",
     val appIconAlias: String = IconSwitcher.DEFAULT_ALIAS,
@@ -32,6 +33,7 @@ class SettingsDataStore(private val context: Context) {
 
     private companion object {
         val BIOMETRIC_LOCK = booleanPreferencesKey("biometric_lock")
+        val HIDE_AMOUNTS = booleanPreferencesKey("hide_amounts")
         val THEME_MODE = stringPreferencesKey("theme_mode")
         val PRIMARY_COLOR_HEX = stringPreferencesKey("primary_color_hex")
         val APP_ICON_ALIAS = stringPreferencesKey("app_icon_alias")
@@ -43,6 +45,7 @@ class SettingsDataStore(private val context: Context) {
     val settings: Flow<ReserveSettings> = context.reserveDataStore.data.map { preferences ->
         ReserveSettings(
             biometricLock = preferences[BIOMETRIC_LOCK] ?: false,
+            hideAmounts = preferences[HIDE_AMOUNTS] ?: false,
             themeMode = runCatching {
                 ThemeMode.valueOf(preferences[THEME_MODE] ?: ThemeMode.SYSTEM.name)
             }.getOrDefault(ThemeMode.SYSTEM),
@@ -56,6 +59,10 @@ class SettingsDataStore(private val context: Context) {
 
     suspend fun setBiometricLock(enabled: Boolean) {
         context.reserveDataStore.edit { it[BIOMETRIC_LOCK] = enabled }
+    }
+
+    suspend fun setHideAmounts(hidden: Boolean) {
+        context.reserveDataStore.edit { it[HIDE_AMOUNTS] = hidden }
     }
 
     suspend fun setThemeMode(mode: ThemeMode) {

@@ -1,5 +1,6 @@
 package com.app.reserve.feature.home
 
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -11,16 +12,22 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ReceiptLong
+import androidx.compose.material.icons.rounded.Visibility
+import androidx.compose.material.icons.rounded.VisibilityOff
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.app.reserve.core.database.TransactionEntity
 import com.app.reserve.core.designsystem.BudgetBar
 import com.app.reserve.core.designsystem.EmptyState
 import com.app.reserve.core.designsystem.EnteSpacing
+import com.app.reserve.core.designsystem.LocalAmountsHidden
 import com.app.reserve.core.designsystem.LocalReserveColors
 import com.app.reserve.core.designsystem.MoneyText
 import com.app.reserve.core.designsystem.MonthSwitcher
@@ -29,6 +36,7 @@ import com.app.reserve.core.designsystem.ReserveDivider
 import com.app.reserve.core.designsystem.SectionLabel
 import com.app.reserve.core.designsystem.TransactionActionSheet
 import com.app.reserve.core.designsystem.TransactionRow
+import com.app.reserve.core.designsystem.formatMoney
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -48,9 +56,11 @@ fun HomeScreen(
     onOpenBudgets: () -> Unit,
     onPreviousMonth: () -> Unit,
     onOpenMenu: () -> Unit,
-    onNextMonth: () -> Unit
+    onNextMonth: () -> Unit,
+    onToggleHideAmounts: (Boolean) -> Unit = {}
 ) {
     val colors = LocalReserveColors.current
+    val amountsHidden = LocalAmountsHidden.current
     val recent = state.monthTransactions.sortedByDescending { it.timestamp }.take(5)
     val budgets = state.monthBudgets
     var activeActionSheetTransaction by remember { mutableStateOf<TransactionEntity?>(null) }
@@ -69,19 +79,62 @@ fun HomeScreen(
             item {
                 Spacer(modifier = Modifier.height(EnteSpacing.md))
                 ReserveCard(modifier = Modifier.padding(horizontal = EnteSpacing.xxl)) {
-                    Text(
-                        text = "SPENT IN ${Dates.monthLabel(state.monthYear).uppercase()}",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = colors.textLighter
-                    )
-                    Spacer(modifier = Modifier.height(6.dp))
-                    MoneyText(
-                        amount = state.spent,
-                        style = MaterialTheme.typography.displayLarge.tabular(),
-                        color = colors.textBase
-                    )
+                    Box(modifier = Modifier.fillMaxWidth()) {
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text(
+                                text = "CURRENT BALANCE",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = colors.textLighter
+                            )
+                            Spacer(modifier = Modifier.height(6.dp))
+                            MoneyText(
+                                amount = state.totalBalance,
+                                style = MaterialTheme.typography.displayLarge.tabular(),
+                                color = colors.textBase,
+                                maxLines = 1
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = buildString {
+                                    append(Dates.monthLabel(state.monthYear))
+                                    val accounts = state.activeAccounts.size
+                                    if (accounts > 0) {
+                                        append(" · ")
+                                        append(accounts)
+                                        append(if (accounts == 1) " account" else " accounts")
+                                    }
+                                },
+                                style = MaterialTheme.typography.bodySmall,
+                                color = colors.textLight,
+                                textAlign = TextAlign.Center
+                            )
+                        }
+                        IconButton(
+                            onClick = { onToggleHideAmounts(!amountsHidden) },
+                            modifier = Modifier.align(Alignment.TopEnd)
+                        ) {
+                            Icon(
+                                imageVector = if (amountsHidden) {
+                                    Icons.Rounded.Visibility
+                                } else {
+                                    Icons.Rounded.VisibilityOff
+                                },
+                                contentDescription = if (amountsHidden) "Show amounts" else "Hide amounts",
+                                tint = colors.textLight
+                            )
+                        }
+                    }
                     Spacer(modifier = Modifier.height(16.dp))
                     Row(modifier = Modifier.fillMaxWidth()) {
+                        MiniStat(
+                            label = "Spent",
+                            value = state.spent,
+                            color = colors.textBase,
+                            modifier = Modifier.weight(1f)
+                        )
                         MiniStat(
                             label = "Income",
                             value = state.income,
@@ -92,12 +145,6 @@ fun HomeScreen(
                             label = "Net",
                             value = state.net,
                             color = if (state.net < 0) colors.warningDefault else colors.textBase,
-                            modifier = Modifier.weight(1f)
-                        )
-                        MiniStat(
-                            label = "Balance",
-                            value = state.totalBalance,
-                            color = colors.textBase,
                             modifier = Modifier.weight(1f)
                         )
                     }
@@ -150,7 +197,7 @@ fun HomeScreen(
                                 modifier = Modifier.weight(1f)
                             )
                             Text(
-                                text = "${com.app.reserve.core.domain.Money.format(progress.spent)} of ${com.app.reserve.core.domain.Money.format(budget.amount)}",
+                                text = "${formatMoney(progress.spent, amountsHidden)} of ${formatMoney(budget.amount, amountsHidden)}",
                                 style = MaterialTheme.typography.labelSmall.tabular(),
                                 color = colors.textLighter
                             )
