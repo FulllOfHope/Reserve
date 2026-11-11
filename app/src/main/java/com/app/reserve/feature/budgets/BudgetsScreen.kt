@@ -79,7 +79,7 @@ fun BudgetsScreen(
             onBack = onBack,
             trailing = {
                 IconButton(onClick = { adding = true }) {
-                    Icon(Icons.Rounded.Add, contentDescription = "Add budget", tint = colors.primary)
+                    Icon(Icons.Rounded.Add, contentDescription = "Add budget", tint = colors.primaryDefault)
                 }
             }
         )
@@ -99,13 +99,13 @@ fun BudgetsScreen(
                         Text(
                             text = "Strict monthly budgets",
                             style = MaterialTheme.typography.titleMedium,
-                            color = colors.textHigh
+                            color = colors.textBase
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
                             text = "Limits reset every month and never roll over. Transfers are excluded.",
                             style = MaterialTheme.typography.bodySmall,
-                            color = colors.textMed
+                            color = colors.textLight
                         )
                     }
                 }
@@ -188,7 +188,7 @@ private fun BudgetRow(
             Text(
                 text = name,
                 style = MaterialTheme.typography.titleMedium,
-                color = colors.textHigh,
+                color = colors.textBase,
                 modifier = Modifier.weight(1f)
             )
             Text(
@@ -198,14 +198,14 @@ private fun BudgetRow(
                     "${Money.format(limit - spent)} left"
                 },
                 style = MaterialTheme.typography.labelSmall.tabular(),
-                color = if (isOver) colors.expense else colors.textLow
+                color = if (isOver) colors.warningDefault else colors.textLighter
             )
             Spacer(modifier = Modifier.width(4.dp))
             IconButton(onClick = onDelete, modifier = Modifier.size(32.dp)) {
                 Icon(
                     imageVector = Icons.Rounded.DeleteOutline,
                     contentDescription = "Delete budget",
-                    tint = colors.textLow,
+                    tint = colors.textLighter,
                     modifier = Modifier.size(18.dp)
                 )
             }
@@ -217,13 +217,13 @@ private fun BudgetRow(
             Text(
                 text = "${Money.format(spent)} of ${Money.format(limit)}",
                 style = MaterialTheme.typography.labelSmall.tabular(),
-                color = colors.textMed
+                color = colors.textLight
             )
             Spacer(modifier = Modifier.weight(1f))
             Text(
                 text = "${((if (limit <= 0L) 0f else spent.toFloat() / limit.toFloat()) * 100).toInt()}%",
                 style = MaterialTheme.typography.labelSmall.tabular(),
-                color = if (isOver) colors.expense else colors.textLow
+                color = if (isOver) colors.warningDefault else colors.textLighter
             )
         }
     }
@@ -246,16 +246,16 @@ private fun BudgetEditorDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = colors.surface,
-        titleContentColor = colors.textHigh,
-        textContentColor = colors.textMed,
+        containerColor = colors.fillLight,
+        titleContentColor = colors.textBase,
+        textContentColor = colors.textLight,
         title = { Text(if (existing == null) "New budget" else "Edit budget") },
         text = {
             Column {
                 Text(
                     text = "Applies to",
                     style = MaterialTheme.typography.labelMedium,
-                    color = colors.textLow
+                    color = colors.textLighter
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 CategoryChoice(
@@ -286,13 +286,13 @@ private fun BudgetEditorDialog(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp),
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = colors.primary,
-                        unfocusedBorderColor = colors.border,
-                        focusedTextColor = colors.textHigh,
-                        unfocusedTextColor = colors.textHigh,
-                        focusedLabelColor = colors.textMed,
-                        unfocusedLabelColor = colors.textLow,
-                        cursorColor = colors.primary
+                        focusedBorderColor = colors.primaryDefault,
+                        unfocusedBorderColor = colors.strokeFaint,
+                        focusedTextColor = colors.textBase,
+                        unfocusedTextColor = colors.textBase,
+                        focusedLabelColor = colors.textLight,
+                        unfocusedLabelColor = colors.textLighter,
+                        cursorColor = colors.primaryDefault
                     )
                 )
             }
@@ -302,12 +302,12 @@ private fun BudgetEditorDialog(
                 onClick = { if (valid) onSave(categoryId, parsed!!) },
                 enabled = valid
             ) {
-                Text("Save", color = if (valid) colors.primary else colors.textLow)
+                Text("Save", color = if (valid) colors.primaryDefault else colors.textLighter)
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("Cancel", color = colors.textMed)
+                Text("Cancel", color = colors.textLight)
             }
         }
     )
@@ -322,8 +322,8 @@ private fun CategoryChoice(label: String, selected: Boolean, onClick: () -> Unit
             .fillMaxWidth()
             .padding(vertical = 3.dp),
         shape = RoundedCornerShape(10.dp),
-        color = if (selected) colors.primary.copy(alpha = 0.12f) else colors.surface,
-        border = BorderStroke(1.dp, if (selected) colors.primary else colors.border)
+        color = if (selected) colors.primaryDefault.copy(alpha = 0.12f) else colors.fillLight,
+        border = BorderStroke(1.dp, if (selected) colors.primaryDefault else colors.strokeFaint)
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
@@ -332,7 +332,7 @@ private fun CategoryChoice(label: String, selected: Boolean, onClick: () -> Unit
             Text(
                 text = label,
                 style = MaterialTheme.typography.bodyMedium,
-                color = if (selected) colors.primary else colors.textHigh,
+                color = if (selected) colors.primaryDefault else colors.textBase,
                 modifier = Modifier.weight(1f)
             )
         }

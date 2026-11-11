@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.ContextWrapper
 import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -15,11 +16,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.AccountBalanceWallet
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -30,12 +28,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
+import com.app.reserve.R
 import com.app.reserve.core.designsystem.LocalReserveColors
 
 fun Context.findFragmentActivity(): FragmentActivity? {
@@ -94,7 +94,7 @@ fun AppLockScreen(onUnlocked: () -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(colors.canvas)
+            .background(colors.fillBase)
             .padding(24.dp)
     ) {
         Column(
@@ -104,23 +104,24 @@ fun AppLockScreen(onUnlocked: () -> Unit) {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            Icon(
-                imageVector = Icons.Rounded.AccountBalanceWallet,
-                contentDescription = null,
-                tint = colors.primary,
-                modifier = Modifier.size(56.dp)
+            Image(
+                painter = painterResource(id = R.drawable.ic_launcher_monochrome),
+                contentDescription = "Reserve Logo",
+                modifier = Modifier
+                    .size(64.dp)
+                    .clip(RoundedCornerShape(16.dp))
             )
             Spacer(modifier = Modifier.height(20.dp))
             Text(
                 text = "Reserve",
                 style = MaterialTheme.typography.headlineLarge,
-                color = colors.textHigh
+                color = colors.textBase
             )
             Spacer(modifier = Modifier.height(8.dp))
             Text(
                 text = "Your data stays on this device.",
                 style = MaterialTheme.typography.bodyMedium,
-                color = colors.textMed,
+                color = colors.textLight,
                 textAlign = TextAlign.Center
             )
             Spacer(modifier = Modifier.height(28.dp))
@@ -131,8 +132,8 @@ fun AppLockScreen(onUnlocked: () -> Unit) {
                     .height(52.dp),
                 shape = RoundedCornerShape(16.dp),
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = colors.primary,
-                    contentColor = colors.onPrimary
+                    containerColor = colors.primaryDefault,
+                    contentColor = colors.textReverse
                 )
             ) {
                 Text("Unlock", style = MaterialTheme.typography.titleMedium)
@@ -142,7 +143,7 @@ fun AppLockScreen(onUnlocked: () -> Unit) {
                 Text(
                     text = it,
                     style = MaterialTheme.typography.bodySmall,
-                    color = colors.textLow,
+                    color = colors.textLighter,
                     textAlign = TextAlign.Center
                 )
             }

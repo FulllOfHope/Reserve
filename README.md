@@ -1,71 +1,155 @@
 # Reserve
 
-A quiet, offline-first expense tracker for Android. Reserve keeps every rupee on
-your device: there is no account, no cloud, no ads, no telemetry and no network
-permission.
+> A privacy-first, offline expense tracker with local SMS automation and a premium minimalist design.
 
-## Features (v1)
+Reserve is a single-user Android expense tracker that keeps every rupee on your device. There is no account to create, no cloud sync, no ads, no telemetry, and **no `INTERNET` permission** — the app cannot phone home even if it wanted to.
 
-- Expenses, income and account-to-account transfers
-- Categories with colour and icon, re-parenting to **Uncategorized** on delete
-- Monthly budgets with strict, non-rolling limits (transfers never count)
-- Recurring monthly entries
-- Dashboard with month switcher, spending, income, net and balances
-- Transaction history with search, type filters and swipe-to-delete with Undo
-- Insights: category donut, top categories and a six-month trend line
-- CSV import/export and a complete local JSON backup/restore
-- Optional biometric app lock
-- Light and dark themes using the exact Reserve palette
+Built with Kotlin, Jetpack Compose, Material 3, Room + SQLCipher, DataStore and Glance.
 
-## Privacy
+<p>
+  <img alt="Platform" src="https://img.shields.io/badge/platform-Android-3DDC84?style=flat-square" />
+  <img alt="Kotlin" src="https://img.shields.io/badge/Kotlin-2.0-7F52FF?style=flat-square" />
+  <img alt="minSdk" src="https://img.shields.io/badge/minSdk-26-0FB70F?style=flat-square" />
+  <img alt="No internet" src="https://img.shields.io/badge/permissions-no%20INTERNET-0FB70F?style=flat-square" />
+</p>
 
-`AndroidManifest.xml` declares no `INTERNET` permission, and the dependency list
-contains no networking SDK. CSV and backup files are written only where you pick
-them through the system file picker. Android cloud backup is explicitly disabled
-for Reserve's database and preferences.
+---
 
-## Money
+## ✨ Key Features
 
-Every amount is stored as a `Long` in minor units (paise). Formatting and
-parsing live in `core/domain/Money.kt`; no `Float` or `Double` is used for money
-arithmetic. `Float` appears only for drawing progress bars and charts.
+- **🔐 Encrypted database (SQLCipher, 16 KB aligned)** — The Room database is encrypted with SQLCipher 4 (AES-256). The passphrase is generated on-device with `SecureRandom` and sealed using AES-256-GCM in `EncryptedSharedPreferences`, backed by the Android Keystore. No passphrase is hardcoded or committed. Native libraries are built with 16 KB ELF page alignment (`0x4000`), verified with `readelf` and `zipalign -P 16`.
+- **📩 Offline SMS parsing** — Optional on-device parsing of bank SMS. Reserve reads debit/credit alerts, extracts the amount, and logs a transaction. Messages never leave the device, and the app remains fully usable if the SMS permissions are denied.
+- **🎨 Jetpack Compose UI** — 100% Compose with Material 3. Inter typography, tabular numerals, a floating pill bottom bar, a pager-driven tab shell and a calm, minimal Ente-inspired design system.
+- **🧩 Glance home-screen widget** — A Material 3 Glance widget that shows the current month's spending at a glance and opens Reserve on tap.
+- **📴 Local-first architecture** — Room is the single source of truth; UI state is derived through Kotlin `Flow`. CSV import/export and local JSON backup/restore use the system document picker — no servers involved.
 
-## Build
+### Also included
 
-Requirements: JDK 17+ and an Android SDK with API 37.
+- 💸 Expenses, income and account-to-account transfers (transfers are net-zero and excluded from budgets)
+- 🏷️ Custom categories with colour + icon, safe re-parenting to *Uncategorized* on deletion
+- 📊 Strict monthly budgets with no rollover, plus category donut and 6-month trend charts
+- 🔁 Recurring monthly rules that generate ordinary, editable transactions
+- 🔒 Optional biometric / device-credential app lock with a rotation-safe timeout
+- 🌗 Light, dark and system themes with a custom accent-colour picker
+
+---
+
+## 🔐 Privacy & Security
+
+| Guarantee | How it is enforced |
+|---|---|
+| No network access | `AndroidManifest.xml` declares no `android.permission.INTERNET`; the merged manifest is checked as part of release verification. |
+| Encrypted at rest | SQLCipher-encrypted Room database; random 256-bit passphrase stored via `EncryptedSharedPreferences`. |
+| SMS stays on-device | `SmsReceiver` parses bank messages locally. It is protected by `android.permission.BROADCAST_SMS`, so only the system can invoke it. |
+| No tracking | No analytics, advertising, crash-reporting or attribution SDKs. |
+| No accounts | Nothing to sign up for and no identifiers to leak. |
+| Local exports only | CSV / JSON files are written through the Storage Access Framework to a location you choose. |
+
+SMS permissions (`RECEIVE_SMS`, `READ_SMS`) are optional and requested on first launch. Denying them only disables automatic SMS capture.
+
+---
+
+## 🎨 Design System
+
+Reserve follows the visual language of [Ente](https://ente.io) — calm surfaces, restrained green accents and generous whitespace:
+
+- **Tokens** — `fillBase`, `fillLight`, `fillDark`, `fillDarker`, `textBase`, `textLight`, `strokeFaint`, `primaryDefault` (`#0FB70F` light / `#067018` dark) and `warningDefault`.
+- **Type** — bundled Inter (Regular / Medium / SemiBold), tabular figures for every monetary value.
+- **Shape & spacing** — 20 dp XL radii, 16 dp L cards, an 8 dp spacing grid and hairline 1 dp strokes instead of shadows.
+- **Motion** — 150–200 ms fades and pager easing; no gradients, gamification or true black in light mode.
+- **Money correctness** — every amount is stored as `Long` minor units (paise); `Float`/`Double` are never used for balances.
+
+---
+
+## 🏗️ Architecture
+
+```
+app/src/main/java/com/app/reserve/
+├── core/
+│   ├── application/      ReserveApplication + manual AppContainer (DI)
+│   ├── data/             ReserveRepository — transactional ledger operations
+│   ├── database/         Room entities, DAOs, SQLCipher database, DbSecurity
+│   ├── datastore/        Theme, accent and lock preferences
+│   ├── designsystem/     Colour tokens, type, components, category icons
+│   ├── domain/           Money, Dates, BudgetCalculator, LedgerMath, CSV, backup
+│   └── util/             Icon switching
+├── feature/
+│   ├── add/              Keypad add/edit transaction sheet
+│   ├── budgets/          Monthly budget editor and progress
+│   ├── home/             Dashboard
+│   ├── insights/         Donut, top categories, trend
+│   ├── manage/           Accounts, categories, recurring rules
+│   ├── settings/         Settings, theme, lock, import/export
+│   ├── sms/              SMS_RECEIVED broadcast receiver
+│   ├── transactions/     Searchable, filterable history
+│   └── widget/           Glance app widget
+└── ui/                   Navigation shell, bottom bar, app-lock screen
+```
+
+- **UI** — Jetpack Compose + Material 3, Navigation Compose and `HorizontalPager`.
+- **State** — unidirectional data flow with `StateFlow` / `Flow` and activity-scoped ViewModels.
+- **Persistence** — Room 2.8 with SQLCipher, DataStore Preferences, `Long` minor units.
+- **DI** — a small manual `AppContainer`; no reflection-based framework.
+- **Background work** — `BroadcastReceiver` + `goAsync()` for SMS and Glance for widget updates.
+
+---
+
+## 🚀 Build & Test
+
+### Requirements
+
+- JDK 17 or newer
+- Android SDK with compileSdk 37
+- Android device or emulator running API 26+
+
+Create `local.properties` with your SDK path (it is git-ignored):
+
+```properties
+sdk.dir=/path/to/Android/Sdk
+```
+
+### Commands
 
 ```bash
-export JAVA_HOME=/opt/android-studio/jbr
-export PATH=$JAVA_HOME/bin:$PATH
-./gradlew assembleDebug testDebugUnitTest lintDebug
+# Build the debug APK
+./gradlew assembleDebug
+
+# Unit tests (money, budgets, transfers, CSV, backup, amount input)
+./gradlew testDebugUnitTest
+
+# Android Lint
+./gradlew lintDebug
+
+# Install on a connected device
+./gradlew installDebug
+
+# Compose instrumentation smoke tests (uninstalls the app afterwards)
+./gradlew connectedDebugAndroidTest
 ```
 
-The debug APK lands in `app/build/outputs/apk/debug/app-debug.apk`.
+The debug APK is written to `app/build/outputs/apk/debug/app-debug.apk`.
 
-## Tests
+### Test coverage
 
-- `MoneyTest` – formatting, grouping, parsing and exact storage
-- `AmountInputTest` – keypad behaviour and minor-unit conversion
-- `BudgetCalculatorTest` – monthly sums, category spend, all-expense budgets,
-  transfer exclusion, trend series and net worth
-- `LedgerMathTest` – income/expense deltas and transfer neutrality (including
-  self-transfer no-op)
-- `CsvManagerTest` – export/parse round-trip with quoted notes and bad rows
-- `BackupManagerTest` – JSON round-trip and version rejection
-- `ComposeSmokeTest` (androidTest) – renders a transaction row and the
-  transactions screen with fixed data
+- **36 unit tests** — exact minor-unit money formatting/parsing, budget maths and all-expenses budgets, transfer neutrality, CSV round-trip, backup validation, amount-input behaviour.
+- **3 instrumentation tests** — Compose smoke checks for the transaction row and transactions screen, plus a regression test that asserts `ReserveApplication` is registered in the manifest.
 
-## Structure
+---
 
-```
-core/
-  application/   manual DI container
-  data/          repository (single source of truth for balances)
-  database/      Room entities, DAOs, database
-  datastore/     theme and lock preferences
-  designsystem/  colours, type, shared components
-  domain/        money, dates, budgets, ledger math, CSV, backup
-feature/
-  add, home, insights, ledger, manage, settings, transactions, budgets
-ui/              navigation shell, bottom bar, biometric lock
-```
+## 👤 Author
+
+**Niraj Hariyani** — [@FulllOfHope](https://github.com/FulllOfHope)
+
+---
+
+## 📄 License
+
+Shared for personal and educational use. No warranty is provided; review the code before relying on it for financial records.
+
+---
+
+## 💛 Design Credits
+
+Reserve's visual language, colour tokens and component rhythm are an homage to Ente's beautifully restrained product design.
+
+> *Design inspired by the exceptional [Ente design team](https://github.com/Ente/Ente) 💛*

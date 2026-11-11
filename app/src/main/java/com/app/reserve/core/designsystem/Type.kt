@@ -12,77 +12,74 @@ import com.app.reserve.R
 val InterFamily = FontFamily(
     Font(R.font.inter_regular, FontWeight.Normal),
     Font(R.font.inter_medium, FontWeight.Medium),
-    Font(R.font.inter_semibold, FontWeight.SemiBold)
+    Font(R.font.inter_semibold, FontWeight.SemiBold),
+    Font(R.font.inter_semibold, FontWeight.Bold), // Assuming bold is mapped to semibold for now if no font file, or we can use FontWeight.Bold. Ente uses ExtraBold, Bold, SemiBold, Medium.
+    Font(R.font.inter_semibold, FontWeight.ExtraBold) // Placeholder map if the font weight is missing
 )
 
+// Define Ente typography scale explicitly
+val H1_Nunito = TextStyle(
+    fontFamily = InterFamily, 
+    fontWeight = FontWeight.ExtraBold,
+    fontSize = 24.sp,
+    lineHeight = 28.sp
+)
+
+val H1_Bold = TextStyle(
+    fontFamily = InterFamily,
+    fontWeight = FontWeight.Bold,
+    fontSize = 20.sp,
+    lineHeight = 28.sp
+)
+
+val H2 = TextStyle(
+    fontFamily = InterFamily,
+    fontWeight = FontWeight.SemiBold,
+    fontSize = 18.sp,
+    lineHeight = 24.sp
+)
+
+val LargeText = TextStyle(
+    fontFamily = InterFamily,
+    fontWeight = FontWeight.SemiBold,
+    fontSize = 16.sp,
+    lineHeight = 20.sp
+)
+
+val BodyText = TextStyle(
+    fontFamily = InterFamily,
+    fontWeight = FontWeight.Medium,
+    fontSize = 14.sp,
+    lineHeight = 20.sp
+)
+
+val MiniText = TextStyle(
+    fontFamily = InterFamily,
+    fontWeight = FontWeight.Medium,
+    fontSize = 12.sp,
+    lineHeight = 16.sp
+)
+
+val TinyText = TextStyle(
+    fontFamily = InterFamily,
+    fontWeight = FontWeight.Medium,
+    fontSize = 10.sp,
+    lineHeight = 12.sp
+)
+
+// Map to Material Typography for compatibility, but we should use the exact styles when building UI.
 val ReserveTypography = Typography(
-    displayLarge = TextStyle(
-        fontFamily = InterFamily,
-        fontWeight = FontWeight.Medium,
-        fontSize = 36.sp,
-        lineHeight = 42.sp,
-        letterSpacing = (-1).sp
-    ),
-    headlineLarge = TextStyle(
-        fontFamily = InterFamily,
-        fontWeight = FontWeight.SemiBold,
-        fontSize = 28.sp,
-        lineHeight = 34.sp,
-        letterSpacing = (-0.5).sp
-    ),
-    headlineSmall = TextStyle(
-        fontFamily = InterFamily,
-        fontWeight = FontWeight.SemiBold,
-        fontSize = 20.sp,
-        lineHeight = 26.sp,
-        letterSpacing = 0.sp
-    ),
-    titleMedium = TextStyle(
-        fontFamily = InterFamily,
-        fontWeight = FontWeight.Medium,
-        fontSize = 16.sp,
-        lineHeight = 22.sp,
-        letterSpacing = 0.15.sp
-    ),
-    bodyLarge = TextStyle(
-        fontFamily = InterFamily,
-        fontWeight = FontWeight.Normal,
-        fontSize = 16.sp,
-        lineHeight = 24.sp
-    ),
-    bodyMedium = TextStyle(
-        fontFamily = InterFamily,
-        fontWeight = FontWeight.Normal,
-        fontSize = 14.sp,
-        lineHeight = 20.sp
-    ),
-    bodySmall = TextStyle(
-        fontFamily = InterFamily,
-        fontWeight = FontWeight.Normal,
-        fontSize = 13.sp,
-        lineHeight = 18.sp
-    ),
-    labelLarge = TextStyle(
-        fontFamily = InterFamily,
-        fontWeight = FontWeight.SemiBold,
-        fontSize = 13.sp,
-        lineHeight = 18.sp,
-        letterSpacing = 0.2.sp
-    ),
-    labelMedium = TextStyle(
-        fontFamily = InterFamily,
-        fontWeight = FontWeight.SemiBold,
-        fontSize = 11.sp,
-        lineHeight = 16.sp,
-        letterSpacing = 0.5.sp
-    ),
-    labelSmall = TextStyle(
-        fontFamily = InterFamily,
-        fontWeight = FontWeight.Medium,
-        fontSize = 11.sp,
-        lineHeight = 14.sp,
-        letterSpacing = 0.4.sp
-    )
+    displayLarge = H1_Nunito,
+    headlineMedium = H1_Bold,
+    headlineLarge = H1_Bold,
+    titleLarge = H2,
+    headlineSmall = H2,
+    titleMedium = LargeText,
+    bodyLarge = LargeText.copy(fontWeight = FontWeight.Medium),
+    bodyMedium = BodyText,
+    labelLarge = LargeText,
+    labelMedium = MiniText,
+    labelSmall = MiniText
 )
 
 /** Every money value uses tabular figures so digits never shift. */

@@ -2,7 +2,6 @@ package com.app.reserve.feature.insights
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -35,13 +34,13 @@ import com.app.reserve.core.designsystem.LocalReserveColors
 import com.app.reserve.core.designsystem.MoneyText
 import com.app.reserve.core.designsystem.MonthSwitcher
 import com.app.reserve.core.designsystem.ReserveCard
-import com.app.reserve.core.designsystem.ScreenTitle
 import com.app.reserve.core.designsystem.SectionLabel
 import com.app.reserve.core.designsystem.categoryColor
 import com.app.reserve.core.designsystem.tabular
 import com.app.reserve.core.domain.BudgetCalculator
 import com.app.reserve.core.domain.CategorySpend
 import com.app.reserve.core.domain.Money
+import androidx.compose.ui.text.drawText
 import com.app.reserve.feature.ledger.LedgerState
 
 @Composable
@@ -58,7 +57,6 @@ fun InsightsScreen(
     ).filter { it.spent > 0 }
 
     Column(modifier = Modifier.fillMaxSize()) {
-        ScreenTitle(title = "Insights")
         MonthSwitcher(
             monthYear = state.monthYear,
             onPrevious = onPreviousMonth,
@@ -96,13 +94,13 @@ fun InsightsScreen(
                                 Text(
                                     text = "SPENT",
                                     style = MaterialTheme.typography.labelMedium,
-                                    color = colors.textLow
+                                    color = colors.textLighter
                                 )
                                 Spacer(modifier = Modifier.height(4.dp))
                                 MoneyText(
                                     amount = state.spent,
                                     style = MaterialTheme.typography.headlineSmall.tabular(),
-                                    color = colors.textHigh
+                                    color = colors.textBase
                                 )
                             }
                         }
@@ -111,13 +109,13 @@ fun InsightsScreen(
                             Summary(
                                 label = "Income",
                                 value = state.income,
-                                color = colors.income,
+                                color = colors.primaryDefault,
                                 modifier = Modifier.weight(1f)
                             )
                             Summary(
                                 label = "Net",
                                 value = state.net,
-                                color = if (state.net < 0) colors.expense else colors.textHigh,
+                                color = if (state.net < 0) colors.warningDefault else colors.textBase,
                                 modifier = Modifier.weight(1f)
                             )
                         }
@@ -147,14 +145,14 @@ fun InsightsScreen(
                             state.monthYear,
                             6
                         )
-                        TrendChart(series = series.map { it.spent })
+                        TrendChart(series = series)
                         Spacer(modifier = Modifier.height(8.dp))
                         Row(modifier = Modifier.fillMaxWidth()) {
                             series.forEach { month ->
                                 Text(
                                     text = month.label,
                                     style = MaterialTheme.typography.labelSmall,
-                                    color = colors.textLow,
+                                    color = colors.textLighter,
                                     modifier = Modifier.weight(1f),
                                     textAlign = androidx.compose.ui.text.style.TextAlign.Center
                                 )
@@ -164,7 +162,7 @@ fun InsightsScreen(
                         Text(
                             text = "Expenses only. Transfers move money between your own accounts and are never counted.",
                             style = MaterialTheme.typography.bodySmall,
-                            color = colors.textLow
+                            color = colors.textLighter
                         )
                     }
                 }
@@ -185,7 +183,7 @@ private fun Summary(
         Text(
             text = label,
             style = MaterialTheme.typography.labelSmall,
-            color = colors.textLow
+            color = colors.textLighter
         )
         Spacer(modifier = Modifier.height(4.dp))
         MoneyText(
@@ -216,19 +214,19 @@ private fun CategoryLegendRow(entry: CategorySpend, total: Long, index: Int) {
         Text(
             text = entry.category?.name ?: "Uncategorized",
             style = MaterialTheme.typography.bodyMedium,
-            color = colors.textHigh,
+            color = colors.textBase,
             modifier = Modifier.weight(1f)
         )
         Text(
             text = "$share%",
             style = MaterialTheme.typography.labelSmall,
-            color = colors.textLow,
+            color = colors.textLighter,
             modifier = Modifier.padding(end = 12.dp)
         )
         MoneyText(
             amount = entry.spent,
             style = MaterialTheme.typography.titleMedium.tabular(),
-            color = colors.textHigh
+            color = colors.textBase
         )
     }
 }
@@ -247,7 +245,7 @@ private fun DonutChart(
         val arcSize = Size(diameter, diameter)
         if (total <= 0L || entries.isEmpty()) {
             drawArc(
-                color = colors.surfaceVariant,
+                color = colors.fillDark,
                 startAngle = 0f,
                 sweepAngle = 360f,
                 useCenter = false,
@@ -276,42 +274,87 @@ private fun DonutChart(
 }
 
 @Composable
-private fun TrendChart(series: List<Long>, modifier: Modifier = Modifier) {
+private fun TrendChart(series: List<com.app.reserve.core.domain.MonthTotal>, modifier: Modifier = Modifier) {
     val colors = LocalReserveColors.current
+    val textMeasurer = androidx.compose.ui.text.rememberTextMeasurer()
+    
     Canvas(
         modifier = modifier
             .fillMaxWidth()
-            .height(140.dp)
+            .height(180.dp)
+            .padding(top = 16.dp)
     ) {
         if (series.isEmpty()) return@Canvas
-        val max = series.maxOrNull()?.coerceAtLeast(1L) ?: 1L
-        val inset = 6.dp.toPx()
-        val usableWidth = size.width - inset * 2
-        val usableHeight = size.height - inset * 2
-        val step = if (series.size <= 1) 0f else usableWidth / (series.size - 1)
-        val points = series.mapIndexed { index, value ->
-            Offset(
-                x = inset + step * index,
-                y = inset + usableHeight - (value.toFloat() / max.toFloat()) * usableHeight
-            )
-        }
-        if (points.size > 1) {
-            val path = Path().apply {
-                moveTo(points.first().x, points.first().y)
-                points.drop(1).forEach { lineTo(it.x, it.y) }
-            }
-            drawPath(
-                path = path,
-                color = colors.primary,
-                style = Stroke(
-                    width = 2.dp.toPx(),
-                    cap = StrokeCap.Round,
-                    join = StrokeJoin.Round
+        
+        val maxAmount = series.maxOfOrNull { maxOf(it.spent, it.income) }?.coerceAtLeast(1L) ?: 1L
+        
+        val textStyle = androidx.compose.ui.text.TextStyle(
+            color = colors.textLighter,
+            fontSize = androidx.compose.ui.unit.TextUnit(12f, androidx.compose.ui.unit.TextUnitType.Sp),
+            fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
+            fontFeatureSettings = "tnum"
+        )
+
+        val bottomPadding = 0.dp.toPx()
+        val usableHeight = size.height - bottomPadding - 24.dp.toPx() // space for text above
+        val usableWidth = size.width
+        
+        // Draw baseline
+        drawLine(
+            color = colors.strokeFaint,
+            start = Offset(0f, usableHeight),
+            end = Offset(usableWidth, usableHeight),
+            strokeWidth = 2.dp.toPx()
+        )
+        
+        val step = usableWidth / series.size.coerceAtLeast(1)
+        val barGroupWidth = step * 0.7f
+        val barWidth = barGroupWidth * 0.45f
+        val spacing = barGroupWidth * 0.1f
+        val radius = 10.dp.toPx() // equivalent to 20.dp corner radius effect for the scale
+
+        series.forEachIndexed { index, monthData ->
+            val centerX = (index * step) + (step / 2)
+            val incomeHeight = (monthData.income.toFloat() / maxAmount.toFloat()) * usableHeight
+            val spentHeight = (monthData.spent.toFloat() / maxAmount.toFloat()) * usableHeight
+            
+            // Draw Income Bar
+            if (monthData.income > 0) {
+                val incomeX = centerX - (barWidth / 2) - (spacing / 2)
+                drawRoundRect(
+                    color = colors.primaryDefault,
+                    topLeft = Offset(incomeX - (barWidth/2), usableHeight - incomeHeight),
+                    size = Size(barWidth, incomeHeight),
+                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(radius, radius)
                 )
-            )
-        }
-        points.forEach { point ->
-            drawCircle(color = colors.primary, radius = 3.dp.toPx(), center = point)
+                
+                // Draw text above income bar
+                val incomeText = androidx.compose.ui.text.AnnotatedString(Money.format(monthData.income).replace("₹", "").trim())
+                val textLayoutResult = textMeasurer.measure(incomeText, textStyle)
+                drawText(
+                    textLayoutResult = textLayoutResult,
+                    topLeft = Offset(incomeX - (textLayoutResult.size.width / 2f), usableHeight - incomeHeight - textLayoutResult.size.height - 4.dp.toPx())
+                )
+            }
+            
+            // Draw Spent Bar
+            if (monthData.spent > 0) {
+                val spentX = centerX + (barWidth / 2) + (spacing / 2)
+                drawRoundRect(
+                    color = colors.warningDefault,
+                    topLeft = Offset(spentX - (barWidth/2), usableHeight - spentHeight),
+                    size = Size(barWidth, spentHeight),
+                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(radius, radius)
+                )
+                
+                // Draw text above spent bar
+                val spentText = androidx.compose.ui.text.AnnotatedString(Money.format(monthData.spent).replace("₹", "").trim())
+                val textLayoutResult = textMeasurer.measure(spentText, textStyle)
+                drawText(
+                    textLayoutResult = textLayoutResult,
+                    topLeft = Offset(spentX - (textLayoutResult.size.width / 2f), usableHeight - spentHeight - textLayoutResult.size.height - 4.dp.toPx())
+                )
+            }
         }
     }
 }

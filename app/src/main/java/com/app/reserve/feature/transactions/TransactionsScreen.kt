@@ -37,12 +37,15 @@ import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -52,7 +55,6 @@ import com.app.reserve.core.designsystem.EmptyState
 import com.app.reserve.core.designsystem.LocalReserveColors
 import com.app.reserve.core.designsystem.MonthSwitcher
 import com.app.reserve.core.designsystem.ReserveDivider
-import com.app.reserve.core.designsystem.ScreenTitle
 import com.app.reserve.core.designsystem.TransactionRow
 import com.app.reserve.core.domain.Dates
 import com.app.reserve.core.domain.Money
@@ -95,7 +97,6 @@ fun TransactionsScreen(
         .toSortedMap(compareByDescending<LocalDate> { it })
 
     Column(modifier = Modifier.fillMaxSize()) {
-        ScreenTitle(title = "Transactions")
         MonthSwitcher(
             monthYear = state.monthYear,
             onPrevious = onPreviousMonth,
@@ -116,16 +117,16 @@ fun TransactionsScreen(
                     onClick = { filter = option },
                     label = { Text(option.label) },
                     colors = FilterChipDefaults.filterChipColors(
-                        containerColor = colors.surface,
-                        labelColor = colors.textMed,
-                        selectedContainerColor = colors.primary.copy(alpha = 0.12f),
-                        selectedLabelColor = colors.primary
+                        containerColor = colors.fillLight,
+                        labelColor = colors.textLight,
+                        selectedContainerColor = colors.primaryDefault.copy(alpha = 0.12f),
+                        selectedLabelColor = colors.primaryDefault
                     ),
                     border = FilterChipDefaults.filterChipBorder(
                         enabled = true,
                         selected = filter == option,
-                        borderColor = colors.border,
-                        selectedBorderColor = colors.primary
+                        borderColor = colors.strokeFaint,
+                        selectedBorderColor = colors.primaryDefault
                     )
                 )
             }
@@ -180,8 +181,8 @@ private fun SearchField(query: String, onQueryChange: (String) -> Unit) {
             .padding(horizontal = 16.dp)
             .height(48.dp),
         shape = RoundedCornerShape(12.dp),
-        color = colors.surface,
-        border = BorderStroke(1.dp, colors.border)
+        color = colors.fillLight,
+        border = BorderStroke(1.dp, colors.strokeFaint)
     ) {
         Row(
             modifier = Modifier.padding(start = 12.dp, end = 4.dp),
@@ -190,7 +191,7 @@ private fun SearchField(query: String, onQueryChange: (String) -> Unit) {
             Icon(
                 imageVector = Icons.Rounded.Search,
                 contentDescription = null,
-                tint = colors.textLow,
+                tint = colors.textLighter,
                 modifier = Modifier.size(18.dp)
             )
             Spacer(modifier = Modifier.width(8.dp))
@@ -199,7 +200,7 @@ private fun SearchField(query: String, onQueryChange: (String) -> Unit) {
                     Text(
                         text = "Search notes, categories, accounts",
                         style = MaterialTheme.typography.bodyMedium,
-                        color = colors.textLow,
+                        color = colors.textLighter,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -207,8 +208,8 @@ private fun SearchField(query: String, onQueryChange: (String) -> Unit) {
                 BasicTextField(
                     value = query,
                     onValueChange = onQueryChange,
-                    textStyle = MaterialTheme.typography.bodyMedium.copy(color = colors.textHigh),
-                    cursorBrush = SolidColor(colors.primary),
+                    textStyle = MaterialTheme.typography.bodyMedium.copy(color = colors.textBase),
+                    cursorBrush = SolidColor(colors.primaryDefault),
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -218,7 +219,7 @@ private fun SearchField(query: String, onQueryChange: (String) -> Unit) {
                     Icon(
                         imageVector = Icons.Rounded.Close,
                         contentDescription = "Clear search",
-                        tint = colors.textLow,
+                        tint = colors.textLighter,
                         modifier = Modifier.size(18.dp)
                     )
                 }
@@ -244,14 +245,14 @@ private fun DayHeader(date: LocalDate, spent: Long) {
         Text(
             text = label.uppercase(),
             style = MaterialTheme.typography.labelMedium,
-            color = colors.textLow,
+            color = colors.textLighter,
             modifier = Modifier.weight(1f)
         )
         if (spent > 0) {
             Text(
                 text = "-${Money.format(spent)}",
                 style = MaterialTheme.typography.labelSmall,
-                color = colors.textLow
+                color = colors.textLighter
             )
         }
     }
@@ -266,9 +267,12 @@ private fun SwipeRow(
     onDelete: () -> Unit
 ) {
     val colors = LocalReserveColors.current
+    val haptic = LocalHapticFeedback.current
+
     val dismissState = rememberSwipeToDismissBoxState(
         confirmValueChange = { value ->
             if (value == SwipeToDismissBoxValue.EndToStart) {
+                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                 onDelete()
                 true
             } else {
@@ -277,6 +281,12 @@ private fun SwipeRow(
         }
     )
 
+    LaunchedEffect(dismissState.targetValue) {
+        if (dismissState.targetValue == SwipeToDismissBoxValue.EndToStart) {
+            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+        }
+    }
+
     SwipeToDismissBox(
         state = dismissState,
         enableDismissFromStartToEnd = false,
@@ -284,24 +294,23 @@ private fun SwipeRow(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(colors.expense.copy(alpha = 0.10f))
+                    .background(colors.warningDefault.copy(alpha = 0.10f))
                     .padding(end = 24.dp),
                 contentAlignment = Alignment.CenterEnd
             ) {
                 Icon(
                     imageVector = Icons.Rounded.DeleteOutline,
                     contentDescription = "Delete",
-                    tint = colors.expense
+                    tint = colors.warningDefault
                 )
             }
         }
     ) {
-        Surface(color = colors.canvas) {
+        Surface(color = colors.fillBase) {
             Column {
                 TransactionRow(
                     transaction = transaction,
                     category = state.categoryFor(transaction.categoryId),
-                    accountName = state.accountName(transaction.accountId),
                     onClick = onEdit
                 )
                 ReserveDivider()

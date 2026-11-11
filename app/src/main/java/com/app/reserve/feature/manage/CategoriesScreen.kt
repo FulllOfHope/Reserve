@@ -76,7 +76,7 @@ fun CategoriesScreen(
             onBack = onBack,
             trailing = {
                 IconButton(onClick = { adding = true }) {
-                    Icon(Icons.Rounded.Add, contentDescription = "Add category", tint = colors.primary)
+                    Icon(Icons.Rounded.Add, contentDescription = "Add category", tint = colors.primaryDefault)
                 }
             }
         )
@@ -143,12 +143,12 @@ private fun CategoryRow(category: CategoryEntity, onClick: () -> Unit) {
             Text(
                 text = category.name,
                 style = MaterialTheme.typography.titleMedium,
-                color = colors.textHigh
+                color = colors.textBase
             )
             Text(
                 text = category.iconName.replaceFirstChar { it.uppercase() },
                 style = MaterialTheme.typography.labelSmall,
-                color = colors.textLow
+                color = colors.textLighter
             )
         }
         Box(
@@ -177,9 +177,9 @@ private fun CategoryEditorDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = colors.surface,
-        titleContentColor = colors.textHigh,
-        textContentColor = colors.textMed,
+        containerColor = colors.fillLight,
+        titleContentColor = colors.textBase,
+        textContentColor = colors.textLight,
         title = { Text(if (existing == null) "New category" else "Edit category") },
         text = {
             Column(
@@ -195,17 +195,17 @@ private fun CategoryEditorDialog(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp),
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = colors.primary,
-                        unfocusedBorderColor = colors.border,
-                        focusedTextColor = colors.textHigh,
-                        unfocusedTextColor = colors.textHigh,
-                        focusedLabelColor = colors.textMed,
-                        unfocusedLabelColor = colors.textLow,
-                        cursorColor = colors.primary
+                        focusedBorderColor = colors.primaryDefault,
+                        unfocusedBorderColor = colors.strokeFaint,
+                        focusedTextColor = colors.textBase,
+                        unfocusedTextColor = colors.textBase,
+                        focusedLabelColor = colors.textLight,
+                        unfocusedLabelColor = colors.textLighter,
+                        cursorColor = colors.primaryDefault
                     )
                 )
                 Spacer(modifier = Modifier.height(12.dp))
-                Text("Type", style = MaterialTheme.typography.labelMedium, color = colors.textLow)
+                Text("Type", style = MaterialTheme.typography.labelMedium, color = colors.textLighter)
                 Spacer(modifier = Modifier.height(6.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf(
@@ -219,21 +219,21 @@ private fun CategoryEditorDialog(
                                 .weight(1f)
                                 .height(40.dp),
                             shape = RoundedCornerShape(10.dp),
-                            color = if (selected) colors.primary.copy(alpha = 0.12f) else colors.surface,
-                            border = BorderStroke(1.dp, if (selected) colors.primary else colors.border)
+                            color = if (selected) colors.primaryDefault.copy(alpha = 0.12f) else colors.fillLight,
+                            border = BorderStroke(1.dp, if (selected) colors.primaryDefault else colors.strokeFaint)
                         ) {
                             Box(contentAlignment = Alignment.Center) {
                                 Text(
                                     text = label,
                                     style = MaterialTheme.typography.labelLarge,
-                                    color = if (selected) colors.primary else colors.textMed
+                                    color = if (selected) colors.primaryDefault else colors.textLight
                                 )
                             }
                         }
                     }
                 }
                 Spacer(modifier = Modifier.height(14.dp))
-                Text("Colour", style = MaterialTheme.typography.labelMedium, color = colors.textLow)
+                Text("Colour", style = MaterialTheme.typography.labelMedium, color = colors.textLighter)
                 Spacer(modifier = Modifier.height(8.dp))
                 CategoryPalette.chunked(5).forEach { row ->
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -250,7 +250,7 @@ private fun CategoryEditorDialog(
                                     Box(
                                         modifier = Modifier
                                             .size(16.dp)
-                                            .background(colors.surface, CircleShape)
+                                            .background(colors.fillLight, CircleShape)
                                             .align(Alignment.Center)
                                     )
                                 }
@@ -259,7 +259,7 @@ private fun CategoryEditorDialog(
                     }
                     Spacer(modifier = Modifier.height(10.dp))
                 }
-                Text("Icon", style = MaterialTheme.typography.labelMedium, color = colors.textLow)
+                Text("Icon", style = MaterialTheme.typography.labelMedium, color = colors.textLighter)
                 Spacer(modifier = Modifier.height(8.dp))
                 CategoryIconChoices.chunked(5).forEach { row ->
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -269,14 +269,14 @@ private fun CategoryEditorDialog(
                                 onClick = { iconName = icon },
                                 modifier = Modifier.size(44.dp),
                                 shape = RoundedCornerShape(10.dp),
-                                color = if (selected) colors.primary.copy(alpha = 0.12f) else colors.surfaceVariant,
-                                border = if (selected) BorderStroke(1.dp, colors.primary) else null
+                                color = if (selected) colors.primaryDefault.copy(alpha = 0.12f) else colors.fillDark,
+                                border = if (selected) BorderStroke(1.dp, colors.primaryDefault) else null
                             ) {
                                 Box(contentAlignment = Alignment.Center) {
                                     Icon(
                                         imageVector = categoryIcon(icon),
                                         contentDescription = label,
-                                        tint = if (selected) colors.primary else colors.textMed,
+                                        tint = if (selected) colors.primaryDefault else colors.textLight,
                                         modifier = Modifier.size(20.dp)
                                     )
                                 }
@@ -297,7 +297,7 @@ private fun CategoryEditorDialog(
             ) {
                 Text(
                     text = "Save",
-                    color = if (name.isNotBlank()) colors.primary else colors.textLow
+                    color = if (name.isNotBlank()) colors.primaryDefault else colors.textLighter
                 )
             }
         },
@@ -305,11 +305,11 @@ private fun CategoryEditorDialog(
             Row {
                 if (existing != null && existing.name != "Uncategorized") {
                     TextButton(onClick = { confirmDelete = true }) {
-                        Text("Delete", color = colors.expense)
+                        Text("Delete", color = colors.warningDefault)
                     }
                 }
                 TextButton(onClick = onDismiss) {
-                    Text("Cancel", color = colors.textMed)
+                    Text("Cancel", color = colors.textLight)
                 }
             }
         }
@@ -318,9 +318,9 @@ private fun CategoryEditorDialog(
     if (confirmDelete && existing != null) {
         AlertDialog(
             onDismissRequest = { confirmDelete = false },
-            containerColor = colors.surface,
-            titleContentColor = colors.textHigh,
-            textContentColor = colors.textMed,
+            containerColor = colors.fillLight,
+            titleContentColor = colors.textBase,
+            textContentColor = colors.textLight,
             title = { Text("Delete ${existing.name}?") },
             text = {
                 Text(
@@ -329,12 +329,12 @@ private fun CategoryEditorDialog(
             },
             confirmButton = {
                 TextButton(onClick = { onDelete(existing) }) {
-                    Text("Delete", color = colors.expense)
+                    Text("Delete", color = colors.warningDefault)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { confirmDelete = false }) {
-                    Text("Keep", color = colors.textMed)
+                    Text("Keep", color = colors.textLight)
                 }
             }
         )

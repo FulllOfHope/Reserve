@@ -1,12 +1,78 @@
+# ---------------------------------------------------------------------------
+# Reserve — Git ignore rules
+# Keep build output, local machine state, signing material and user data out
+# of version control. Never commit anything in this file's "secrets" section.
+# ---------------------------------------------------------------------------
+
+# Android / Gradle build output
 *.iml
 .gradle/
-/local.properties
+.kotlin/
+build/
+/app/build/
+/captures
+.externalNativeBuild/
+.cxx/
+output-metadata.json
+lint-results*.html
+lint-results*.xml
+
+# Local machine configuration (SDK paths, API keys, machine-specific settings)
+local.properties
 /.idea/
 .DS_Store
-/build
-/captures
-.externalNativeBuild
-.cxx
-local.properties
-app/build/
-build/
+Thumbs.db
+
+# Signing material — NEVER commit these
+*.jks
+*.keystore
+keystore.properties
+signing.properties
+secrets.properties
+release-keystore/
+
+# Secrets / environment
+.env
+.env.*
+*.pem
+*.p12
+*.pfx
+
+# Build artifacts
+*.apk
+*.aab
+*.aar
+*.ap_
+*.dex
+*.class
+*.hprof
+*.log
+
+# Local databases, exports, backups and test fixtures
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+*.realm
+*.backup
+*.dump
+
+# SMS / device test data
+sms-test*.log
+sms_logs/
+test-data/
+fixtures/local/
+
+# Local AI model weights and experiment data
+*.onnx
+*.tflite
+*.pt
+*.pth
+*.gguf
+models/
+weights/
+
+# Generated Play Store upload artifacts
+/app/release/

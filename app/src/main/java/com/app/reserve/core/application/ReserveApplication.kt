@@ -15,6 +15,7 @@ class ReserveApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        System.loadLibrary("sqlcipher")
         container = AppContainer(this)
         container.scope.launch {
             container.repository.ensureSeeded()

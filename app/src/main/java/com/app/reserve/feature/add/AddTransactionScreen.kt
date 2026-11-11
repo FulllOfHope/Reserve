@@ -1,9 +1,9 @@
 package com.app.reserve.feature.add
 
-import android.app.DatePickerDialog
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -12,12 +12,15 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.ChevronLeft
+import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material3.AlertDialog
@@ -40,8 +43,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -52,8 +56,14 @@ import com.app.reserve.core.database.TransactionEntity
 import com.app.reserve.core.database.TransactionType
 import com.app.reserve.core.designsystem.AmountKeypad
 import com.app.reserve.core.designsystem.CategoryChip
+import com.app.reserve.core.designsystem.EnteButton
+import com.app.reserve.core.designsystem.EnteRadius
+import com.app.reserve.core.designsystem.EnteSpacing
 import com.app.reserve.core.designsystem.LocalReserveColors
-import com.app.reserve.core.designsystem.MoneyText
+import com.app.reserve.core.designsystem.radius_md
+import com.app.reserve.core.designsystem.radius_xl
+import com.app.reserve.core.designsystem.spacing_lg
+import com.app.reserve.core.designsystem.spacing_md
 import com.app.reserve.core.designsystem.tabular
 import com.app.reserve.core.domain.AmountInput
 import com.app.reserve.core.domain.Dates
@@ -71,7 +81,6 @@ fun AddTransactionScreen(
     onCreateRecurring: (RecurringEntity) -> Unit
 ) {
     val colors = LocalReserveColors.current
-    val context = LocalContext.current
     val focusManager = LocalFocusManager.current
 
     var type by remember(existing) { mutableStateOf(existing?.type ?: initialType) }
@@ -88,6 +97,7 @@ fun AddTransactionScreen(
     var repeatMonthly by remember { mutableStateOf(false) }
     var showAccountPicker by remember { mutableStateOf(false) }
     var showTargetPicker by remember { mutableStateOf(false) }
+    var showDatePicker by remember { mutableStateOf(false) }
 
     val categories = state.categories.filter { it.type == type }
     LaunchedEffect(type, categories) {
@@ -105,7 +115,6 @@ fun AddTransactionScreen(
     }
 
     val amount = AmountInput(amountText)
-    val selectedCategory = categories.firstOrNull { it.id == categoryId }
     val amountValid = amount.minor > 0L
     val accountValid = accountId != null
     val targetValid = type != TransactionType.TRANSFER ||
@@ -126,8 +135,11 @@ fun AddTransactionScreen(
         createdAt = existing?.createdAt ?: System.currentTimeMillis()
     )
 
+    val haptic = LocalHapticFeedback.current
+
     fun save() {
         if (!canSave) return
+        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
         focusManager.clearFocus()
         if (repeatMonthly && existing == null) {
             val nextMonthKey = Dates.shiftMonth(Dates.monthKey(date), 1)
@@ -149,174 +161,201 @@ fun AddTransactionScreen(
         onSave(buildTransaction(), existing)
     }
 
-    Column(modifier = Modifier.fillMaxSize().imePadding()) {
-        Row(
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .clickable(
+                interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                indication = null,
+                onClick = onClose
+            ),
+        contentAlignment = Alignment.BottomCenter
+    ) {
+        Surface(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 4.dp, vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically
+                .clickable(
+                    interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                    indication = null,
+                    onClick = {}
+                ),
+            shape = RoundedCornerShape(
+                topStart = radius_xl,
+                topEnd = radius_xl
+            ),
+            color = colors.fillBase
         ) {
-            IconButton(onClick = onClose) {
-                Icon(Icons.Rounded.Close, contentDescription = "Close", tint = colors.textHigh)
-            }
-            Text(
-                text = when {
-                    existing != null -> "Edit transaction"
-                    type == TransactionType.TRANSFER -> "Transfer"
-                    type == TransactionType.INCOME -> "Add income"
-                    else -> "Add expense"
-                },
-                style = MaterialTheme.typography.titleMedium,
-                color = colors.textHigh,
-                modifier = Modifier.weight(1f)
-            )
-            TextButton(onClick = { save() }, enabled = canSave) {
-                Text(
-                    text = "Save",
-                    style = MaterialTheme.typography.labelLarge,
-                    color = if (canSave) colors.primary else colors.textLow
-                )
-            }
-        }
-
-        Column(
-            modifier = Modifier
-                .weight(1f)
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp)
-        ) {
-            if (existing == null) {
-                TypeSelector(
-                    selected = type,
-                    onSelect = { newType ->
-                        type = newType
-                        if (newType == TransactionType.TRANSFER) {
-                            if (targetAccountId == null) {
-                                targetAccountId = state.activeAccounts
-                                    .firstOrNull { it.id != accountId }?.id
-                            }
-                        }
-                    }
-                )
-                Spacer(modifier = Modifier.height(16.dp))
-            }
-
-            Text(
-                text = "Amount",
-                style = MaterialTheme.typography.labelMedium,
-                color = colors.textLow
-            )
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = amount.display,
-                style = MaterialTheme.typography.displayLarge.copy(
-                    fontSize = 42.sp,
-                    fontWeight = FontWeight.Medium
-                ).tabular(),
-                color = if (amountValid) colors.textHigh else colors.textLow
-            )
-            Spacer(modifier = Modifier.height(16.dp))
-
-            if (type == TransactionType.TRANSFER) {
-                TransferAccounts(
-                    state = state,
-                    accountId = accountId,
-                    targetAccountId = targetAccountId,
-                    onPickSource = { showAccountPicker = true },
-                    onPickTarget = { showTargetPicker = true }
-                )
-            } else {
-                CategorySection(
-                    categories = categories,
-                    selectedId = categoryId,
-                    onSelect = { categoryId = it }
-                )
-                Spacer(modifier = Modifier.height(12.dp))
-                FieldRow(
-                    label = "Account",
-                    value = state.accountName(accountId),
-                    onClick = { showAccountPicker = true }
-                )
-            }
-
-            FieldRow(
-                label = "Date",
-                value = Dates.fullDateLong(Dates.toTimestamp(date)),
-                onClick = {
-                    DatePickerDialog(
-                        context,
-                        { _, year, month, dayOfMonth ->
-                            date = LocalDate.of(year, month + 1, dayOfMonth)
-                        },
-                        date.year,
-                        date.monthValue - 1,
-                        date.dayOfMonth
-                    ).show()
-                }
-            )
-
-            OutlinedTextField(
-                value = note,
-                onValueChange = { note = it },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 8.dp),
-                placeholder = {
-                    Text("Note (optional)", color = colors.textLow)
-                },
-                singleLine = false,
-                maxLines = 3,
-                shape = RoundedCornerShape(12.dp),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = colors.primary,
-                    unfocusedBorderColor = colors.border,
-                    focusedContainerColor = colors.surface,
-                    unfocusedContainerColor = colors.surface,
-                    focusedTextColor = colors.textHigh,
-                    unfocusedTextColor = colors.textHigh,
-                    cursorColor = colors.primary
-                )
-            )
-
-            if (existing == null) {
+            Column(modifier = Modifier.fillMaxWidth().navigationBarsPadding().imePadding()) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(vertical = 8.dp),
+                        .padding(horizontal = spacing_lg, vertical = spacing_lg),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "Repeat monthly",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = colors.textHigh
+                    Text(
+                        text = when {
+                            existing != null -> "Edit transaction"
+                            type == TransactionType.TRANSFER -> "Transfer"
+                            type == TransactionType.INCOME -> "Add income"
+                            else -> "Add expense"
+                        },
+                        style = MaterialTheme.typography.headlineLarge,
+                        color = colors.textBase,
+                        modifier = Modifier.weight(1f)
+                    )
+                    IconButton(onClick = onClose) {
+                        Icon(Icons.Rounded.Close, contentDescription = "Close", tint = colors.textBase)
+                    }
+                }
+
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .verticalScroll(rememberScrollState())
+                        .padding(horizontal = 16.dp)
+                ) {
+                    if (existing == null) {
+                        TypeSelector(
+                            selected = type,
+                            onSelect = { newType ->
+                                type = newType
+                                if (newType == TransactionType.TRANSFER) {
+                                    if (targetAccountId == null) {
+                                        targetAccountId = state.activeAccounts
+                                            .firstOrNull { it.id != accountId }?.id
+                                    }
+                                }
+                            }
                         )
-                        Text(
-                            text = "Adds this same entry on the ${date.dayOfMonth}${ordinalSuffix(date.dayOfMonth)} of each month.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = colors.textLow
+                        Spacer(modifier = Modifier.height(16.dp))
+                    }
+
+                    Text(
+                        text = "Amount",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = colors.textLighter
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = amount.display,
+                        style = MaterialTheme.typography.displayLarge.copy(
+                            fontSize = 42.sp,
+                            fontWeight = FontWeight.Medium
+                        ).tabular(),
+                        color = if (amountValid) colors.textBase else colors.textLighter
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    if (type == TransactionType.TRANSFER) {
+                        TransferAccounts(
+                            state = state,
+                            accountId = accountId,
+                            targetAccountId = targetAccountId,
+                            onPickSource = { showAccountPicker = true },
+                            onPickTarget = { showTargetPicker = true }
+                        )
+                    } else {
+                        CategorySection(
+                            categories = categories,
+                            selectedId = categoryId,
+                            onSelect = { categoryId = it }
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        FieldRow(
+                            label = "Account",
+                            value = state.accountName(accountId),
+                            onClick = { showAccountPicker = true }
                         )
                     }
-                    Switch(
-                        checked = repeatMonthly,
-                        onCheckedChange = { repeatMonthly = it },
-                        colors = SwitchDefaults.colors(
-                            checkedThumbColor = colors.onPrimary,
-                            checkedTrackColor = colors.primary,
-                            uncheckedThumbColor = colors.textLow,
-                            uncheckedTrackColor = colors.surfaceVariant,
-                            uncheckedBorderColor = colors.border
+
+                    FieldRow(
+                        label = "Date",
+                        value = Dates.fullDateLong(Dates.toTimestamp(date)),
+                        onClick = { showDatePicker = true }
+                    )
+
+                    OutlinedTextField(
+                        value = note,
+                        onValueChange = { note = it },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 8.dp),
+                        placeholder = {
+                            Text("Note (optional)", color = colors.textLighter)
+                        },
+                        singleLine = false,
+                        maxLines = 3,
+                        shape = RoundedCornerShape(12.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = colors.primaryDefault,
+                            unfocusedBorderColor = colors.strokeFaint,
+                            focusedContainerColor = colors.fillLight,
+                            unfocusedContainerColor = colors.fillLight,
+                            focusedTextColor = colors.textBase,
+                            unfocusedTextColor = colors.textBase,
+                            cursorColor = colors.primaryDefault
                         )
                     )
+
+                    if (existing == null) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Repeat monthly",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = colors.textBase
+                                )
+                                Text(
+                                    text = "Adds this same entry on the ${date.dayOfMonth}${ordinalSuffix(date.dayOfMonth)} of each month.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = colors.textLighter
+                                )
+                            }
+                            Switch(
+                                checked = repeatMonthly,
+                                onCheckedChange = { repeatMonthly = it },
+                                colors = SwitchDefaults.colors(
+                                    checkedThumbColor = colors.textReverse,
+                                    checkedTrackColor = colors.primaryDefault,
+                                    uncheckedThumbColor = colors.textLighter,
+                                    uncheckedTrackColor = colors.fillDark,
+                                    uncheckedBorderColor = colors.strokeFaint
+                                )
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+                }
+
+                Surface(color = colors.fillBase) {
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        AmountKeypad(onKey = { key -> amountText = AmountInput(amountText).append(key).text })
+                        EnteButton(
+                            text = "Save",
+                            onClick = { save() },
+                            enabled = canSave,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = EnteSpacing.lg, vertical = EnteSpacing.md)
+                        )
+                    }
                 }
             }
-
-            Spacer(modifier = Modifier.height(16.dp))
         }
+    }
 
-        Surface(color = colors.canvas) {
-            AmountKeypad(onKey = { key -> amountText = AmountInput(amountText).append(key).text })
-        }
+    if (showDatePicker) {
+        CustomDateTimePickerDialog(
+            initialDate = date,
+            onDateSelected = { date = it },
+            onDismiss = { showDatePicker = false }
+        )
     }
 
     if (showAccountPicker) {
@@ -350,6 +389,108 @@ fun AddTransactionScreen(
 }
 
 @Composable
+private fun CustomDateTimePickerDialog(
+    initialDate: LocalDate,
+    onDateSelected: (LocalDate) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val colors = LocalReserveColors.current
+    var selectedDate by remember { mutableStateOf(initialDate) }
+    var displayingMonthYear by remember { mutableStateOf(initialDate) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = colors.fillLight,
+        title = {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(onClick = { displayingMonthYear = displayingMonthYear.minusMonths(1) }) {
+                    Icon(Icons.Rounded.ChevronLeft, contentDescription = "Previous Month", tint = colors.textBase)
+                }
+                Text(
+                    text = "${displayingMonthYear.month.name.lowercase().replaceFirstChar { it.uppercase() }.take(3)} ${displayingMonthYear.year}",
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                    color = colors.textBase
+                )
+                IconButton(onClick = { displayingMonthYear = displayingMonthYear.plusMonths(1) }) {
+                    Icon(Icons.Rounded.ChevronRight, contentDescription = "Next Month", tint = colors.textBase)
+                }
+            }
+        },
+        text = {
+            Column {
+                val daysInMonth = displayingMonthYear.lengthOfMonth()
+                val firstDayOfWeek = displayingMonthYear.withDayOfMonth(1).dayOfWeek.value % 7
+
+                val totalGridCells = firstDayOfWeek + daysInMonth
+                val rows = (totalGridCells + 6) / 7
+
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    for (row in 0 until rows) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            for (col in 0 until 7) {
+                                val cellIndex = row * 7 + col
+                                val dayNum = cellIndex - firstDayOfWeek + 1
+                                if (dayNum in 1..daysInMonth) {
+                                    val isSelected = selectedDate.year == displayingMonthYear.year &&
+                                            selectedDate.month == displayingMonthYear.month &&
+                                            selectedDate.dayOfMonth == dayNum
+                                    Surface(
+                                        modifier = Modifier
+                                            .size(36.dp)
+                                            .clickable {
+                                                selectedDate = LocalDate.of(displayingMonthYear.year, displayingMonthYear.month, dayNum)
+                                            },
+                                        shape = RoundedCornerShape(radius_md),
+                                        color = if (isSelected) colors.primaryDefault else Color.Transparent
+                                    ) {
+                                        Box(contentAlignment = Alignment.Center) {
+                                            Text(
+                                                text = "$dayNum",
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                color = if (isSelected) colors.textReverse else colors.textBase
+                                            )
+                                        }
+                                    }
+                                } else {
+                                    Spacer(modifier = Modifier.size(36.dp))
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            androidx.compose.material3.Button(
+                onClick = {
+                    onDateSelected(selectedDate)
+                    onDismiss()
+                },
+                shape = RoundedCornerShape(radius_xl),
+                colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                    containerColor = colors.primaryDefault,
+                    contentColor = colors.textReverse
+                )
+            ) {
+                Text("Select", style = MaterialTheme.typography.titleMedium)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel", color = colors.textLight)
+            }
+        }
+    )
+}
+
+@Composable
 private fun TypeSelector(
     selected: TransactionType,
     onSelect: (TransactionType) -> Unit
@@ -366,9 +507,9 @@ private fun TypeSelector(
         ).forEach { (type, label) ->
             val isSelected = selected == type
             val accent = when (type) {
-                TransactionType.EXPENSE -> colors.expense
-                TransactionType.INCOME -> colors.income
-                TransactionType.TRANSFER -> colors.transfer
+                TransactionType.EXPENSE -> colors.warningDefault
+                TransactionType.INCOME -> colors.primaryDefault
+                TransactionType.TRANSFER -> colors.textBase
             }
             Surface(
                 onClick = { onSelect(type) },
@@ -376,14 +517,14 @@ private fun TypeSelector(
                     .weight(1f)
                     .height(40.dp),
                 shape = RoundedCornerShape(10.dp),
-                color = if (isSelected) accent.copy(alpha = 0.12f) else colors.surface,
-                border = BorderStroke(1.dp, if (isSelected) accent else colors.border)
+                color = if (isSelected) accent.copy(alpha = 0.12f) else colors.fillLight,
+                border = BorderStroke(1.dp, if (isSelected) accent else colors.strokeFaint)
             ) {
-                androidx.compose.foundation.layout.Box(contentAlignment = Alignment.Center) {
+                Box(contentAlignment = Alignment.Center) {
                     Text(
                         text = label,
                         style = MaterialTheme.typography.labelLarge,
-                        color = if (isSelected) accent else colors.textMed
+                        color = if (isSelected) accent else colors.textLight
                     )
                 }
             }
@@ -401,7 +542,7 @@ private fun CategorySection(
         Text(
             text = "Category",
             style = MaterialTheme.typography.labelMedium,
-            color = LocalReserveColors.current.textLow
+            color = LocalReserveColors.current.textLighter
         )
         Spacer(modifier = Modifier.height(8.dp))
         categories.chunked(2).forEach { row ->
@@ -439,13 +580,13 @@ private fun TransferAccounts(
             label = "From",
             value = state.accountName(accountId),
             onClick = onPickSource,
-            valueColor = LocalReserveColors.current.transfer
+            valueColor = LocalReserveColors.current.textBase
         )
         FieldRow(
             label = "To",
             value = state.accountName(targetAccountId),
             onClick = onPickTarget,
-            valueColor = LocalReserveColors.current.transfer
+            valueColor = LocalReserveColors.current.textBase
         )
     }
 }
@@ -455,7 +596,7 @@ private fun FieldRow(
     label: String,
     value: String,
     onClick: () -> Unit,
-    valueColor: Color = LocalReserveColors.current.textHigh
+    valueColor: Color = LocalReserveColors.current.textBase
 ) {
     val colors = LocalReserveColors.current
     Row(
@@ -469,7 +610,7 @@ private fun FieldRow(
         Text(
             text = label,
             style = MaterialTheme.typography.bodyMedium,
-            color = colors.textMed,
+            color = colors.textLight,
             modifier = Modifier.weight(1f)
         )
         Text(
@@ -480,7 +621,7 @@ private fun FieldRow(
         Icon(
             imageVector = Icons.Rounded.ExpandMore,
             contentDescription = null,
-            tint = colors.textLow,
+            tint = colors.textLighter,
             modifier = Modifier.size(18.dp)
         )
     }
@@ -497,8 +638,8 @@ private fun AccountPickerDialog(
     val colors = LocalReserveColors.current
     AlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = colors.surface,
-        titleContentColor = colors.textHigh,
+        containerColor = colors.fillLight,
+        titleContentColor = colors.textBase,
         title = { Text(title) },
         text = {
             Column {
@@ -506,7 +647,7 @@ private fun AccountPickerDialog(
                     Text(
                         text = "Add an account first.",
                         style = MaterialTheme.typography.bodyMedium,
-                        color = colors.textMed
+                        color = colors.textLight
                     )
                 }
                 accounts.forEach { account ->
@@ -521,19 +662,19 @@ private fun AccountPickerDialog(
                             Text(
                                 text = account.name,
                                 style = MaterialTheme.typography.titleMedium,
-                                color = if (account.id == selectedId) colors.primary else colors.textHigh
+                                color = if (account.id == selectedId) colors.primaryDefault else colors.textBase
                             )
                             Text(
                                 text = com.app.reserve.core.domain.Money.format(account.balance),
                                 style = MaterialTheme.typography.labelSmall,
-                                color = colors.textLow
+                                color = colors.textLighter
                             )
                         }
                         if (account.id == selectedId) {
                             Text(
                                 text = "Selected",
                                 style = MaterialTheme.typography.labelSmall,
-                                color = colors.primary
+                                color = colors.primaryDefault
                             )
                         }
                     }
@@ -542,7 +683,7 @@ private fun AccountPickerDialog(
         },
         confirmButton = {
             TextButton(onClick = onDismiss) {
-                Text("Close", color = colors.textMed)
+                Text("Close", color = colors.textLight)
             }
         }
     )

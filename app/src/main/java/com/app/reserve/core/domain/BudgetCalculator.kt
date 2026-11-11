@@ -74,7 +74,8 @@ object BudgetCalculator {
             MonthTotal(
                 monthYear = key,
                 label = Dates.monthLabel(key).substringBefore(' ').take(3),
-                spent = spentTotal(transactions, key)
+                spent = spentTotal(transactions, key),
+                income = transactions.filter { it.type == TransactionType.INCOME && Dates.monthKey(Dates.toLocalDate(it.timestamp)) == key }.sumOf { it.amount }
             )
         }
     }
@@ -101,4 +102,4 @@ data class CategorySpend(
     val spent: Long
 )
 
-data class MonthTotal(val monthYear: String, val label: String, val spent: Long)
+data class MonthTotal(val monthYear: String, val label: String, val spent: Long, val income: Long)

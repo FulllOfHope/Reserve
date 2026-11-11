@@ -58,7 +58,7 @@ class ComposeSmokeTest {
                 TransactionRow(
                     transaction = transaction,
                     category = category,
-                    accountName = "Cash",
+                    //accountName = "Cash",
                     onClick = {},
                     modifier = Modifier.fillMaxSize()
                 )

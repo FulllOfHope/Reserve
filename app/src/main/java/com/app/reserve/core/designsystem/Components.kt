@@ -1,7 +1,13 @@
 package com.app.reserve.core.designsystem
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -15,12 +21,21 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.ime
+import androidx.compose.material.icons.rounded.ContentCopy
+import androidx.compose.material.icons.rounded.DeleteOutline
+import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Backspace
 import androidx.compose.material.icons.rounded.ChevronLeft
 import androidx.compose.material.icons.rounded.ChevronRight
+import androidx.compose.material.icons.rounded.Menu
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -52,26 +67,27 @@ fun ReserveCard(
     content: @Composable ColumnScope.() -> Unit
 ) {
     val colors = LocalReserveColors.current
-    val shape = RoundedCornerShape(16.dp)
-    val border = BorderStroke(1.dp, colors.border)
+    val shape = RoundedCornerShape(radius_xl)
     if (onClick != null) {
         Surface(
-            modifier = modifier.fillMaxWidth(),
+            modifier = modifier
+                .fillMaxWidth()
+                .border(1.dp, colors.strokeFaint, shape),
             shape = shape,
-            color = colors.surface,
-            border = border,
+            color = colors.fillLight,
             onClick = onClick
         ) {
-            Column(content = content)
+            Column(modifier = Modifier.padding(spacing_xl), content = content)
         }
     } else {
         Surface(
-            modifier = modifier.fillMaxWidth(),
+            modifier = modifier
+                .fillMaxWidth()
+                .border(1.dp, colors.strokeFaint, shape),
             shape = shape,
-            color = colors.surface,
-            border = border
+            color = colors.fillLight
         ) {
-            Column(content = content)
+            Column(modifier = Modifier.padding(spacing_xl), content = content)
         }
     }
 }
@@ -81,13 +97,14 @@ fun ScreenTitle(
     title: String,
     modifier: Modifier = Modifier,
     onBack: (() -> Unit)? = null,
+    onMenu: (() -> Unit)? = null,
     trailing: (@Composable () -> Unit)? = null
 ) {
     val colors = LocalReserveColors.current
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = if (onBack == null) 16.dp else 4.dp, vertical = 8.dp),
+            .padding(horizontal = spacing_xxl, vertical = spacing_md),
         verticalAlignment = Alignment.CenterVertically
     ) {
         if (onBack != null) {
@@ -95,19 +112,31 @@ fun ScreenTitle(
                 Icon(
                     imageVector = Icons.Rounded.ChevronLeft,
                     contentDescription = "Back",
-                    tint = colors.textHigh
+                    tint = colors.textBase
+                )
+            }
+        } else if (onMenu != null) {
+            IconButton(onClick = onMenu) {
+                Icon(
+                    imageVector = Icons.Rounded.Menu,
+                    contentDescription = "Menu",
+                    tint = colors.textBase
                 )
             }
         }
+        
         Text(
             text = title,
-            style = MaterialTheme.typography.headlineLarge,
-            color = colors.textHigh,
+            style = MaterialTheme.typography.displayLarge, // H1Nunito
+            color = colors.textBase,
             modifier = Modifier
                 .weight(1f)
-                .padding(start = if (onBack == null) 0.dp else 4.dp)
+                .padding(start = if (onBack == null && onMenu == null) 0.dp else spacing_sm)
         )
-        trailing?.invoke()
+        
+        if (trailing != null) {
+            trailing()
+        }
     }
 }
 
@@ -122,24 +151,24 @@ fun SectionLabel(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
+            .padding(horizontal = spacing_xxl, vertical = spacing_sm),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
             text = text.uppercase(),
             style = MaterialTheme.typography.labelMedium,
-            color = colors.textLow,
+            color = colors.textLighter,
             modifier = Modifier.weight(1f)
         )
         if (actionLabel != null && onAction != null) {
             Text(
                 text = actionLabel,
                 style = MaterialTheme.typography.labelLarge,
-                color = colors.primary,
+                color = colors.primaryDefault,
                 modifier = Modifier
-                    .clip(RoundedCornerShape(8.dp))
+                    .clip(RoundedCornerShape(radius_sm))
                     .clickable(onClick = onAction)
-                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                    .padding(horizontal = spacing_sm, vertical = spacing_xs)
             )
         }
     }
@@ -150,7 +179,7 @@ fun MoneyText(
     amount: Long,
     modifier: Modifier = Modifier,
     style: TextStyle = MaterialTheme.typography.titleMedium.tabular(),
-    color: Color = LocalReserveColors.current.textHigh,
+    color: Color = LocalReserveColors.current.textBase,
     showPlus: Boolean = false,
     maxLines: Int = 1
 ) {
@@ -171,12 +200,12 @@ fun CategoryAvatar(
     size: Dp = 40.dp
 ) {
     val colors = LocalReserveColors.current
-    val tint = category?.let { categoryColor(it.colorHex) } ?: colors.textLow
+    val tint = category?.let { categoryColor(it.colorHex) } ?: colors.textLighter
     Box(
         modifier = modifier
             .size(size)
-            .clip(RoundedCornerShape(12.dp))
-            .background(colors.surfaceVariant),
+            .clip(RoundedCornerShape(EnteRadius.md))
+            .background(colors.fillDarker),
         contentAlignment = Alignment.Center
     ) {
         Icon(
@@ -192,7 +221,6 @@ fun CategoryAvatar(
 fun TransactionRow(
     transaction: TransactionEntity,
     category: CategoryEntity?,
-    accountName: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -200,16 +228,15 @@ fun TransactionRow(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .heightIn(min = 64.dp)
             .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 10.dp),
+            .padding(horizontal = EnteSpacing.xxl, vertical = EnteSpacing.md),
         verticalAlignment = Alignment.CenterVertically
     ) {
         CategoryAvatar(
             category = category,
             size = 40.dp
         )
-        Spacer(modifier = Modifier.width(12.dp))
+        Spacer(modifier = Modifier.width(EnteSpacing.lg))
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = when {
@@ -219,23 +246,24 @@ fun TransactionRow(
                     else -> "Transaction"
                 },
                 style = MaterialTheme.typography.titleMedium,
-                color = colors.textHigh,
+                color = colors.textBase,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
+            Spacer(modifier = Modifier.height(2.dp))
             Text(
-                text = "${Dates.fullDate(transaction.timestamp)} · $accountName",
-                style = MaterialTheme.typography.bodySmall,
-                color = colors.textLow,
+                text = Dates.fullDate(transaction.timestamp),
+                style = MaterialTheme.typography.labelMedium,
+                color = colors.textLight,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
         }
-        Spacer(modifier = Modifier.width(8.dp))
+        Spacer(modifier = Modifier.width(spacing_sm))
         val amountColor = when (transaction.type) {
-            TransactionType.INCOME -> colors.income
-            TransactionType.EXPENSE -> colors.textHigh
-            TransactionType.TRANSFER -> colors.transfer
+            TransactionType.INCOME -> colors.primaryDefault
+            TransactionType.EXPENSE -> colors.textBase
+            TransactionType.TRANSFER -> colors.textBase
         }
         MoneyText(
             amount = if (transaction.type == TransactionType.EXPENSE) -transaction.amount else transaction.amount,
@@ -253,8 +281,8 @@ fun ReserveDivider(modifier: Modifier = Modifier) {
         modifier = modifier
             .fillMaxWidth()
             .height(1.dp)
-            .padding(start = 68.dp)
-            .background(colors.border)
+            .padding(start = 72.dp, end = spacing_xxl)
+            .background(colors.strokeFaint)
     )
 }
 
@@ -267,21 +295,23 @@ fun MonthSwitcher(
 ) {
     val colors = LocalReserveColors.current
     Row(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = spacing_xxl),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Center
     ) {
         IconButton(onClick = onPrevious) {
-            Icon(Icons.Rounded.ChevronLeft, contentDescription = "Previous month", tint = colors.textMed)
+            Icon(Icons.Rounded.ChevronLeft, contentDescription = "Previous month", tint = colors.textLight)
         }
         Text(
             text = Dates.monthLabel(monthYear),
             style = MaterialTheme.typography.titleMedium,
-            color = colors.textHigh,
-            modifier = Modifier.padding(horizontal = 8.dp)
+            color = colors.textBase,
+            modifier = Modifier.padding(horizontal = spacing_sm)
         )
         IconButton(onClick = onNext) {
-            Icon(Icons.Rounded.ChevronRight, contentDescription = "Next month", tint = colors.textMed)
+            Icon(Icons.Rounded.ChevronRight, contentDescription = "Next month", tint = colors.textLight)
         }
     }
 }
@@ -295,22 +325,22 @@ fun BudgetBar(
     val colors = LocalReserveColors.current
     val ratio = if (limit <= 0L) 0f else spent.toFloat() / limit.toFloat()
     val fill = when {
-        ratio > 1f -> colors.expense
-        ratio >= 0.9f -> colors.warning
-        else -> colors.primary
+        ratio > 1f -> colors.warningDefault
+        ratio >= 0.9f -> colors.warningDefault
+        else -> colors.primaryDefault
     }
     Box(
         modifier = modifier
             .fillMaxWidth()
             .height(8.dp)
-            .clip(RoundedCornerShape(4.dp))
-            .background(colors.surfaceVariant)
+            .clip(RoundedCornerShape(radius_sm))
+            .background(colors.fillDarker)
     ) {
         Box(
             modifier = Modifier
                 .fillMaxWidth(ratio.coerceIn(0f, 1f))
                 .height(8.dp)
-                .clip(RoundedCornerShape(4.dp))
+                .clip(RoundedCornerShape(radius_sm))
                 .background(fill)
         )
     }
@@ -325,36 +355,46 @@ fun EmptyState(
     onAction: (() -> Unit)? = null
 ) {
     val colors = LocalReserveColors.current
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(horizontal = 24.dp, vertical = 48.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            tint = colors.textLow,
-            modifier = Modifier.size(48.dp)
-        )
-        Spacer(modifier = Modifier.height(12.dp))
-        Text(
-            text = text,
-            style = MaterialTheme.typography.bodyMedium,
-            color = colors.textMed,
-            modifier = Modifier.padding(horizontal = 16.dp)
-        )
-        if (actionLabel != null && onAction != null) {
-            Spacer(modifier = Modifier.height(12.dp))
-            Text(
-                text = actionLabel,
-                style = MaterialTheme.typography.labelLarge,
-                color = colors.primary,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(8.dp))
-                    .clickable(onClick = onAction)
-                    .padding(horizontal = 12.dp, vertical = 8.dp)
+    AnimatedVisibility(
+        visible = true,
+        enter = slideInVertically(
+            animationSpec = spring(
+                dampingRatio = Spring.DampingRatioNoBouncy,
+                stiffness = Spring.StiffnessMedium
             )
+        ) { it / 2 } + fadeIn()
+    ) {
+        Column(
+            modifier = modifier
+                .fillMaxWidth()
+                .padding(horizontal = spacing_xxl, vertical = 48.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = colors.textLighter,
+                modifier = Modifier.size(48.dp)
+            )
+            Spacer(modifier = Modifier.height(spacing_md))
+            Text(
+                text = text,
+                style = MaterialTheme.typography.bodyMedium,
+                color = colors.textLight,
+                modifier = Modifier.padding(horizontal = spacing_lg)
+            )
+            if (actionLabel != null && onAction != null) {
+                Spacer(modifier = Modifier.height(spacing_md))
+                Text(
+                    text = actionLabel,
+                    style = MaterialTheme.typography.labelLarge,
+                    color = colors.primaryDefault,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(radius_sm))
+                        .clickable(onClick = onAction)
+                        .padding(horizontal = spacing_md, vertical = spacing_sm)
+                )
+            }
         }
     }
 }
@@ -369,15 +409,56 @@ fun PrimaryAddButton(
     Surface(
         onClick = onClick,
         modifier = modifier.size(56.dp),
-        shape = RoundedCornerShape(16.dp),
-        color = colors.primary
+        shape = RoundedCornerShape(radius_xl),
+        color = colors.primaryDefault
     ) {
         Box(contentAlignment = Alignment.Center) {
             Icon(
                 imageVector = Icons.Rounded.Add,
                 contentDescription = contentDescription,
-                tint = colors.onPrimary,
+                tint = colors.textReverse,
                 modifier = Modifier.size(24.dp)
+            )
+        }
+    }
+}
+
+@Composable
+fun EnteButton(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    icon: ImageVector? = null,
+    containerColor: Color? = null
+) {
+    val colors = LocalReserveColors.current
+    val bg = containerColor ?: colors.primaryDefault
+    Surface(
+        modifier = modifier
+            .clip(CircleShape)
+            .clickable(enabled = enabled, onClick = onClick),
+        shape = CircleShape,
+        color = if (enabled) bg else colors.fillDark
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = EnteSpacing.xxl, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center
+        ) {
+            if (icon != null) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = if (enabled) Color.White else colors.textLighter,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(modifier = Modifier.width(EnteSpacing.sm))
+            }
+            Text(
+                text = text,
+                style = MaterialTheme.typography.titleMedium,
+                color = if (enabled) Color.White else colors.textLighter
             )
         }
     }
@@ -395,12 +476,12 @@ fun CategoryChip(
     Surface(
         onClick = onClick,
         modifier = modifier.height(48.dp),
-        shape = RoundedCornerShape(12.dp),
-        color = if (selected) accent.copy(alpha = 0.12f) else colors.surface,
-        border = BorderStroke(1.dp, if (selected) accent else colors.border)
+        shape = RoundedCornerShape(radius_md),
+        color = if (selected) accent.copy(alpha = 0.12f) else colors.fillLight,
+        border = if (selected) BorderStroke(1.dp, accent) else null
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 12.dp),
+            modifier = Modifier.padding(horizontal = spacing_md),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(
@@ -409,11 +490,11 @@ fun CategoryChip(
                 tint = accent,
                 modifier = Modifier.size(18.dp)
             )
-            Spacer(modifier = Modifier.width(8.dp))
+            Spacer(modifier = Modifier.width(spacing_sm))
             Text(
                 text = category.name,
                 style = MaterialTheme.typography.bodyMedium,
-                color = colors.textHigh,
+                color = colors.textBase,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
@@ -452,7 +533,7 @@ fun AmountKeypad(
                             Icon(
                                 imageVector = Icons.Rounded.Backspace,
                                 contentDescription = "Delete digit",
-                                tint = colors.textHigh,
+                                tint = colors.textBase,
                                 modifier = Modifier.size(24.dp)
                             )
                         } else {
@@ -460,10 +541,115 @@ fun AmountKeypad(
                                 text = key,
                                 style = MaterialTheme.typography.headlineSmall,
                                 fontWeight = FontWeight.Normal,
-                                color = colors.textHigh
+                                color = colors.textBase
                             )
                         }
                     }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun TransactionActionSheet(
+    transaction: TransactionEntity,
+    onEdit: () -> Unit,
+    onDuplicate: () -> Unit,
+    onDelete: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    val colors = LocalReserveColors.current
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = colors.fillBase,
+        contentWindowInsets = { WindowInsets.ime },
+        shape = RoundedCornerShape(topStart = EnteRadius.xl, topEnd = EnteRadius.xl)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = EnteSpacing.xxl, vertical = EnteSpacing.xl)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Edit Action
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(EnteRadius.md))
+                        .clickable {
+                            onDismiss()
+                            onEdit()
+                        }
+                        .padding(EnteSpacing.md)
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Edit,
+                        contentDescription = "Edit",
+                        tint = colors.textBase,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Text(
+                        text = "Edit",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = colors.textBase,
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
+                }
+
+                // Duplicate Action
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(EnteRadius.md))
+                        .clickable {
+                            onDismiss()
+                            onDuplicate()
+                        }
+                        .padding(EnteSpacing.md)
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.ContentCopy,
+                        contentDescription = "Duplicate",
+                        tint = colors.textBase,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Text(
+                        text = "Duplicate",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = colors.textBase,
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
+                }
+
+                // Delete Action
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(EnteRadius.md))
+                        .clickable {
+                            onDismiss()
+                            onDelete()
+                        }
+                        .padding(EnteSpacing.md)
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.DeleteOutline,
+                        contentDescription = "Delete",
+                        tint = colors.warningDefault,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Text(
+                        text = "Delete",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = colors.warningDefault,
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
                 }
             }
         }
@@ -475,7 +661,7 @@ fun KeyValueRow(
     label: String,
     value: String,
     modifier: Modifier = Modifier,
-    valueColor: Color = LocalReserveColors.current.textHigh,
+    valueColor: Color = LocalReserveColors.current.textBase,
     onClick: (() -> Unit)? = null
 ) {
     val colors = LocalReserveColors.current
@@ -484,13 +670,13 @@ fun KeyValueRow(
         .heightIn(min = 56.dp)
     val clickable = if (onClick != null) base.clickable(onClick = onClick) else base
     Row(
-        modifier = clickable.padding(horizontal = 16.dp, vertical = 14.dp),
+        modifier = clickable.padding(horizontal = spacing_lg, vertical = spacing_md),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
             text = label,
             style = MaterialTheme.typography.bodyMedium,
-            color = colors.textMed,
+            color = colors.textLight,
             modifier = Modifier.weight(1f)
         )
         Text(

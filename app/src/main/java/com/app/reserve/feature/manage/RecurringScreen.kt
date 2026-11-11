@@ -76,7 +76,7 @@ fun RecurringScreen(
             onBack = onBack,
             trailing = {
                 IconButton(onClick = { adding = true }) {
-                    Icon(Icons.Rounded.Add, contentDescription = "Add recurring entry", tint = colors.primary)
+                    Icon(Icons.Rounded.Add, contentDescription = "Add recurring entry", tint = colors.primaryDefault)
                 }
             }
         )
@@ -91,21 +91,21 @@ fun RecurringScreen(
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 8.dp),
                     shape = RoundedCornerShape(16.dp),
-                    color = colors.surface,
-                    border = BorderStroke(1.dp, colors.border)
+                    color = colors.fillLight,
+                    border = BorderStroke(1.dp, colors.strokeFaint)
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Text(
                             text = "Monthly entries",
                             style = MaterialTheme.typography.titleMedium,
-                            color = colors.textHigh
+                            color = colors.textBase
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
                             text = "Reserve adds the next entry automatically when it is due. Editing or deleting " +
                                 "one generated entry never changes the rule.",
                             style = MaterialTheme.typography.bodySmall,
-                            color = colors.textMed
+                            color = colors.textLight
                         )
                     }
                 }
@@ -180,7 +180,7 @@ private fun RecurringRow(
                     categoryName ?: if (rule.type == TransactionType.TRANSFER) "Transfer" else "Recurring"
                 },
                 style = MaterialTheme.typography.titleMedium,
-                color = if (rule.paused) colors.textLow else colors.textHigh
+                color = if (rule.paused) colors.textLighter else colors.textBase
             )
             Text(
                 text = buildString {
@@ -190,16 +190,16 @@ private fun RecurringRow(
                     if (rule.paused) append(" · Paused")
                 },
                 style = MaterialTheme.typography.labelSmall,
-                color = colors.textLow
+                color = colors.textLighter
             )
         }
         MoneyText(
             amount = if (rule.type == TransactionType.EXPENSE) -rule.amount else rule.amount,
             style = MaterialTheme.typography.titleMedium.tabular(),
             color = when (rule.type) {
-                TransactionType.INCOME -> colors.income
-                TransactionType.TRANSFER -> colors.transfer
-                TransactionType.EXPENSE -> colors.textHigh
+                TransactionType.INCOME -> colors.primaryDefault
+                TransactionType.TRANSFER -> colors.textBase
+                TransactionType.EXPENSE -> colors.textBase
             }
         )
         Spacer(modifier = Modifier.width(4.dp))
@@ -207,18 +207,18 @@ private fun RecurringRow(
             checked = !rule.paused,
             onCheckedChange = { onTogglePaused() },
             colors = SwitchDefaults.colors(
-                checkedThumbColor = colors.onPrimary,
-                checkedTrackColor = colors.primary,
-                uncheckedThumbColor = colors.textLow,
-                uncheckedTrackColor = colors.surfaceVariant,
-                uncheckedBorderColor = colors.border
+                checkedThumbColor = colors.textReverse,
+                checkedTrackColor = colors.primaryDefault,
+                uncheckedThumbColor = colors.textLighter,
+                uncheckedTrackColor = colors.fillDark,
+                uncheckedBorderColor = colors.strokeFaint
             )
         )
         IconButton(onClick = onDelete) {
             Icon(
                 imageVector = Icons.Rounded.DeleteOutline,
                 contentDescription = "Delete rule",
-                tint = colors.textLow,
+                tint = colors.textLighter,
                 modifier = Modifier.size(20.dp)
             )
         }
@@ -256,9 +256,9 @@ private fun RecurringEditorDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = colors.surface,
-        titleContentColor = colors.textHigh,
-        textContentColor = colors.textMed,
+        containerColor = colors.fillLight,
+        titleContentColor = colors.textBase,
+        textContentColor = colors.textLight,
         title = { Text(if (existing == null) "New recurring entry" else "Edit recurring entry") },
         text = {
             Column(
@@ -293,14 +293,14 @@ private fun RecurringEditorDialog(
                                 .weight(1f)
                                 .height(38.dp),
                             shape = RoundedCornerShape(10.dp),
-                            color = if (selected) colors.primary.copy(alpha = 0.12f) else colors.surface,
-                            border = BorderStroke(1.dp, if (selected) colors.primary else colors.border)
+                            color = if (selected) colors.primaryDefault.copy(alpha = 0.12f) else colors.fillLight,
+                            border = BorderStroke(1.dp, if (selected) colors.primaryDefault else colors.strokeFaint)
                         ) {
                             Box(contentAlignment = Alignment.Center) {
                                 Text(
                                     text = label,
                                     style = MaterialTheme.typography.labelLarge,
-                                    color = if (selected) colors.primary else colors.textMed
+                                    color = if (selected) colors.primaryDefault else colors.textLight
                                 )
                             }
                         }
@@ -323,7 +323,7 @@ private fun RecurringEditorDialog(
 
                 if (type != TransactionType.TRANSFER) {
                     Spacer(modifier = Modifier.height(12.dp))
-                    Text("Category", style = MaterialTheme.typography.labelMedium, color = colors.textLow)
+                    Text("Category", style = MaterialTheme.typography.labelMedium, color = colors.textLighter)
                     Spacer(modifier = Modifier.height(6.dp))
                     ChoiceWrap(
                         options = categories.map { it.id to it.name },
@@ -336,7 +336,7 @@ private fun RecurringEditorDialog(
                 Text(
                     text = if (type == TransactionType.TRANSFER) "From account" else "Account",
                     style = MaterialTheme.typography.labelMedium,
-                    color = colors.textLow
+                    color = colors.textLighter
                 )
                 Spacer(modifier = Modifier.height(6.dp))
                 ChoiceWrap(
@@ -352,7 +352,7 @@ private fun RecurringEditorDialog(
 
                 if (type == TransactionType.TRANSFER) {
                     Spacer(modifier = Modifier.height(12.dp))
-                    Text("To account", style = MaterialTheme.typography.labelMedium, color = colors.textLow)
+                    Text("To account", style = MaterialTheme.typography.labelMedium, color = colors.textLighter)
                     Spacer(modifier = Modifier.height(6.dp))
                     ChoiceWrap(
                         options = state.activeAccounts
@@ -390,12 +390,12 @@ private fun RecurringEditorDialog(
                 },
                 enabled = valid
             ) {
-                Text("Save", color = if (valid) colors.primary else colors.textLow)
+                Text("Save", color = if (valid) colors.primaryDefault else colors.textLighter)
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("Cancel", color = colors.textMed)
+                Text("Cancel", color = colors.textLight)
             }
         }
     )
@@ -418,13 +418,13 @@ private fun PickerField(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(12.dp),
         colors = OutlinedTextFieldDefaults.colors(
-            focusedBorderColor = colors.primary,
-            unfocusedBorderColor = colors.border,
-            focusedTextColor = colors.textHigh,
-            unfocusedTextColor = colors.textHigh,
-            focusedLabelColor = colors.textMed,
-            unfocusedLabelColor = colors.textLow,
-            cursorColor = colors.primary
+            focusedBorderColor = colors.primaryDefault,
+            unfocusedBorderColor = colors.strokeFaint,
+            focusedTextColor = colors.textBase,
+            unfocusedTextColor = colors.textBase,
+            focusedLabelColor = colors.textLight,
+            unfocusedLabelColor = colors.textLighter,
+            cursorColor = colors.primaryDefault
         )
     )
 }
@@ -450,14 +450,14 @@ private fun ChoiceWrap(
                             .weight(1f)
                             .height(40.dp),
                         shape = RoundedCornerShape(10.dp),
-                        color = if (selected) colors.primary.copy(alpha = 0.12f) else colors.surface,
-                        border = BorderStroke(1.dp, if (selected) colors.primary else colors.border)
+                        color = if (selected) colors.primaryDefault.copy(alpha = 0.12f) else colors.fillLight,
+                        border = BorderStroke(1.dp, if (selected) colors.primaryDefault else colors.strokeFaint)
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             Text(
                                 text = label,
                                 style = MaterialTheme.typography.labelLarge,
-                                color = if (selected) colors.primary else colors.textMed,
+                                color = if (selected) colors.primaryDefault else colors.textLight,
                                 maxLines = 1,
                                 overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                             )

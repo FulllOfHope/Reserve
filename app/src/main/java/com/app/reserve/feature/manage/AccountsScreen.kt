@@ -76,7 +76,7 @@ fun AccountsScreen(
             onBack = onBack,
             trailing = {
                 IconButton(onClick = { adding = true }) {
-                    Icon(Icons.Rounded.Add, contentDescription = "Add account", tint = colors.primary)
+                    Icon(Icons.Rounded.Add, contentDescription = "Add account", tint = colors.primaryDefault)
                 }
             }
         )
@@ -107,7 +107,7 @@ fun AccountsScreen(
                                 Icon(
                                     imageVector = Icons.Rounded.DeleteOutline,
                                     contentDescription = "Archive ${account.name}",
-                                    tint = colors.textLow,
+                                    tint = colors.textLighter,
                                     modifier = Modifier.size(20.dp)
                                 )
                             }
@@ -130,11 +130,11 @@ fun AccountsScreen(
                                 Icon(
                                     imageVector = Icons.Rounded.Restore,
                                     contentDescription = null,
-                                    tint = colors.primary,
+                                    tint = colors.primaryDefault,
                                     modifier = Modifier.size(18.dp)
                                 )
                                 Spacer(modifier = Modifier.width(4.dp))
-                                Text("Restore", color = colors.primary)
+                                Text("Restore", color = colors.primaryDefault)
                             }
                         }
                     )
@@ -169,9 +169,9 @@ fun AccountsScreen(
     archiving?.let { account ->
         AlertDialog(
             onDismissRequest = { archiving = null },
-            containerColor = colors.surface,
-            titleContentColor = colors.textHigh,
-            textContentColor = colors.textMed,
+            containerColor = colors.fillLight,
+            titleContentColor = colors.textBase,
+            textContentColor = colors.textLight,
             title = { Text("Remove ${account.name}?") },
             text = {
                 Text(
@@ -190,12 +190,12 @@ fun AccountsScreen(
                         }
                     }
                 ) {
-                    Text("Remove", color = colors.expense)
+                    Text("Remove", color = colors.warningDefault)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { archiving = null }) {
-                    Text("Cancel", color = colors.textMed)
+                    Text("Cancel", color = colors.textLight)
                 }
             }
         )
@@ -225,14 +225,14 @@ private fun AccountRow(
         ) {
             Surface(
                 shape = RoundedCornerShape(12.dp),
-                color = colors.surfaceVariant,
+                color = colors.fillDark,
                 modifier = Modifier.size(40.dp)
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     Icon(
                         imageVector = Icons.Rounded.CreditCard,
                         contentDescription = null,
-                        tint = colors.primary,
+                        tint = colors.primaryDefault,
                         modifier = Modifier.size(20.dp)
                     )
                 }
@@ -243,18 +243,18 @@ private fun AccountRow(
             Text(
                 text = account.name,
                 style = MaterialTheme.typography.titleMedium,
-                color = if (account.isArchived) colors.textLow else colors.textHigh
+                color = if (account.isArchived) colors.textLighter else colors.textBase
             )
             Text(
                 text = if (account.isArchived) "Archived" else "Balance",
                 style = MaterialTheme.typography.labelSmall,
-                color = colors.textLow
+                color = colors.textLighter
             )
         }
         MoneyText(
             amount = account.balance,
             style = MaterialTheme.typography.titleMedium.tabular(),
-            color = if (account.isArchived) colors.textLow else colors.textHigh
+            color = if (account.isArchived) colors.textLighter else colors.textBase
         )
         trailing()
     }
@@ -274,9 +274,9 @@ private fun AccountEditorDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = colors.surface,
-        titleContentColor = colors.textHigh,
-        textContentColor = colors.textMed,
+        containerColor = colors.fillLight,
+        titleContentColor = colors.textBase,
+        textContentColor = colors.textLight,
         title = { Text(if (existing == null) "New account" else "Edit account") },
         text = {
             Column {
@@ -312,7 +312,7 @@ private fun AccountEditorDialog(
                     Text(
                         text = "Balances change automatically as you add transactions.",
                         style = MaterialTheme.typography.bodySmall,
-                        color = colors.textLow
+                        color = colors.textLighter
                     )
                 }
             }
@@ -332,13 +332,13 @@ private fun AccountEditorDialog(
             ) {
                 Text(
                     text = "Save",
-                    color = if (name.isNotBlank() && openingValid) colors.primary else colors.textLow
+                    color = if (name.isNotBlank() && openingValid) colors.primaryDefault else colors.textLighter
                 )
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("Cancel", color = colors.textMed)
+                Text("Cancel", color = colors.textLight)
             }
         }
     )
@@ -346,11 +346,11 @@ private fun AccountEditorDialog(
 
 @Composable
 private fun fieldColors() = OutlinedTextFieldDefaults.colors(
-    focusedBorderColor = LocalReserveColors.current.primary,
-    unfocusedBorderColor = LocalReserveColors.current.border,
-    focusedTextColor = LocalReserveColors.current.textHigh,
-    unfocusedTextColor = LocalReserveColors.current.textHigh,
-    focusedLabelColor = LocalReserveColors.current.textMed,
-    unfocusedLabelColor = LocalReserveColors.current.textLow,
-    cursorColor = LocalReserveColors.current.primary
+    focusedBorderColor = LocalReserveColors.current.primaryDefault,
+    unfocusedBorderColor = LocalReserveColors.current.strokeFaint,
+    focusedTextColor = LocalReserveColors.current.textBase,
+    unfocusedTextColor = LocalReserveColors.current.textBase,
+    focusedLabelColor = LocalReserveColors.current.textLight,
+    unfocusedLabelColor = LocalReserveColors.current.textLighter,
+    cursorColor = LocalReserveColors.current.primaryDefault
 )

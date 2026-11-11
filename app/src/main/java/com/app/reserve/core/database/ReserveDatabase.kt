@@ -35,7 +35,11 @@ abstract class ReserveDatabase : RoomDatabase() {
                     context.applicationContext,
                     ReserveDatabase::class.java,
                     "reserve.db"
-                ).fallbackToDestructiveMigration().build().also { instance = it }
+                )
+                    .fallbackToDestructiveMigration()
+                    .openHelperFactory(net.zetetic.database.sqlcipher.SupportOpenHelperFactory(DbSecurity.getPassphrase(context)))
+                    .build()
+                    .also { instance = it }
             }
     }
 }

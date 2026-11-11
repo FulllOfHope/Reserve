@@ -4,59 +4,51 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 
 /**
- * Reserve's colour tokens. The values are repeated verbatim from the design
- * specification and must not be tinted, opacified or replaced with Material
- * defaults.
+ * Reserve's colour tokens based on Ente Design System.
  */
 data class ReserveColors(
     val isDark: Boolean,
-    val canvas: Color,
-    val surface: Color,
-    val surfaceVariant: Color,
-    val border: Color,
-    val primary: Color,
-    val onPrimary: Color,
-    val textHigh: Color,
-    val textMed: Color,
-    val textLow: Color,
-    val income: Color,
-    val expense: Color,
-    val transfer: Color,
-    val warning: Color
+    val fillBase: Color,
+    val fillLight: Color,
+    val fillDark: Color,
+    val fillDarker: Color,
+    val textBase: Color,
+    val textLight: Color,
+    val textLighter: Color,
+    val textReverse: Color,
+    val strokeFaint: Color,
+    val primaryDefault: Color,
+    val warningDefault: Color
 )
 
 val ReserveLightColors = ReserveColors(
     isDark = false,
-    canvas = Color(0xFFFAFAFA),
-    surface = Color(0xFFFFFFFF),
-    surfaceVariant = Color(0xFFF0F0F2),
-    border = Color(0xFFE5E5E5),
-    primary = Color(0xFF1E5142),
-    onPrimary = Color(0xFFFFFFFF),
-    textHigh = Color(0xFF1A1A1C),
-    textMed = Color(0xFF4A4A4D),
-    textLow = Color(0xFF7C7C80),
-    income = Color(0xFF2D7D54),
-    expense = Color(0xFFD14343),
-    transfer = Color(0xFF4078C0),
-    warning = Color(0xFFC27827)
+    fillBase = Color(0xFFFFFFFF),       // Pure White
+    fillLight = Color(0xFFF5F5F5),      // Light Grey
+    fillDark = Color(0xFFEDEDED),
+    fillDarker = Color(0xFFD4D4D8),
+    textBase = Color(0xFF1C1C1E),       // Heavy text
+    textLight = Color(0xFF8E8E93),      // Cap values / dates
+    textLighter = Color(0xFF8E8E93), 
+    textReverse = Color(0xFFFFFFFF),
+    strokeFaint = Color(0xFFEDEDED),    // Fine partition hairline
+    primaryDefault = Color(0xFF0FB70F),  // Vibrant Ente Green
+    warningDefault = Color(0xFFD03434)   // Critical Red
 )
 
 val ReserveDarkColors = ReserveColors(
     isDark = true,
-    canvas = Color(0xFF121214),
-    surface = Color(0xFF1C1C1F),
-    surfaceVariant = Color(0xFF2A2A2E),
-    border = Color(0xFF2A2A2E),
-    primary = Color(0xFF478A73),
-    onPrimary = Color(0xFF000000),
-    textHigh = Color(0xFFEDEDEF),
-    textMed = Color(0xFFA1A1A5),
-    textLow = Color(0xFF6B6B70),
-    income = Color(0xFF4EAE7C),
-    expense = Color(0xFFE57373),
-    transfer = Color(0xFF6B9EE0),
-    warning = Color(0xFFE5A85C)
+    fillBase = Color(0xFF000000),       // Pure Black
+    fillLight = Color(0xFF151515),      // Dark Surface
+    fillDark = Color(0xFF292929),
+    fillDarker = Color(0xFF3E3E3E),
+    textBase = Color(0xFFFFFFFF),       // Pure White
+    textLight = Color(0xFFA1A1AA),
+    textLighter = Color(0xFFA1A1AA),
+    textReverse = Color(0xFF000000),
+    strokeFaint = Color(0xFF292929),
+    primaryDefault = Color(0xFF067018),  // Ente Green
+    warningDefault = Color(0xFFDD3434)
 )
 
 /** Low-saturation category palette; readable on both light and dark surfaces. */

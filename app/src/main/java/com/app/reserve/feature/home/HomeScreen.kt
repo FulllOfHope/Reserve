@@ -1,6 +1,5 @@
 package com.app.reserve.feature.home
 
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -17,19 +16,23 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.app.reserve.core.database.TransactionEntity
 import com.app.reserve.core.designsystem.BudgetBar
 import com.app.reserve.core.designsystem.EmptyState
+import com.app.reserve.core.designsystem.EnteSpacing
 import com.app.reserve.core.designsystem.LocalReserveColors
 import com.app.reserve.core.designsystem.MoneyText
 import com.app.reserve.core.designsystem.MonthSwitcher
 import com.app.reserve.core.designsystem.ReserveCard
 import com.app.reserve.core.designsystem.ReserveDivider
-import com.app.reserve.core.designsystem.ScreenTitle
 import com.app.reserve.core.designsystem.SectionLabel
+import com.app.reserve.core.designsystem.TransactionActionSheet
 import com.app.reserve.core.designsystem.TransactionRow
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import com.app.reserve.core.designsystem.tabular
 import com.app.reserve.core.domain.BudgetCalculator
 import com.app.reserve.core.domain.Dates
@@ -40,17 +43,19 @@ fun HomeScreen(
     state: LedgerState,
     onOpenAdd: () -> Unit,
     onEditTransaction: (TransactionEntity) -> Unit,
+    onDeleteTransaction: (TransactionEntity) -> Unit = {},
     onSeeAll: () -> Unit,
     onOpenBudgets: () -> Unit,
     onPreviousMonth: () -> Unit,
+    onOpenMenu: () -> Unit,
     onNextMonth: () -> Unit
 ) {
     val colors = LocalReserveColors.current
     val recent = state.monthTransactions.sortedByDescending { it.timestamp }.take(5)
     val budgets = state.monthBudgets
+    var activeActionSheetTransaction by remember { mutableStateOf<TransactionEntity?>(null) }
 
     Column(modifier = Modifier.fillMaxSize()) {
-        ScreenTitle(title = "Reserve")
         MonthSwitcher(
             monthYear = state.monthYear,
             onPrevious = onPreviousMonth,
@@ -62,41 +67,39 @@ fun HomeScreen(
             contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 96.dp)
         ) {
             item {
-                Spacer(modifier = Modifier.height(8.dp))
-                ReserveCard(modifier = Modifier.padding(horizontal = 16.dp)) {
-                    Column(modifier = Modifier.padding(20.dp)) {
-                        Text(
-                            text = "SPENT IN ${Dates.monthLabel(state.monthYear).uppercase()}",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = colors.textLow
+                Spacer(modifier = Modifier.height(EnteSpacing.md))
+                ReserveCard(modifier = Modifier.padding(horizontal = EnteSpacing.xxl)) {
+                    Text(
+                        text = "SPENT IN ${Dates.monthLabel(state.monthYear).uppercase()}",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = colors.textLighter
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    MoneyText(
+                        amount = state.spent,
+                        style = MaterialTheme.typography.displayLarge.tabular(),
+                        color = colors.textBase
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Row(modifier = Modifier.fillMaxWidth()) {
+                        MiniStat(
+                            label = "Income",
+                            value = state.income,
+                            color = colors.primaryDefault,
+                            modifier = Modifier.weight(1f)
                         )
-                        Spacer(modifier = Modifier.height(6.dp))
-                        MoneyText(
-                            amount = state.spent,
-                            style = MaterialTheme.typography.displayLarge.tabular(),
-                            color = colors.textHigh
+                        MiniStat(
+                            label = "Net",
+                            value = state.net,
+                            color = if (state.net < 0) colors.warningDefault else colors.textBase,
+                            modifier = Modifier.weight(1f)
                         )
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Row(modifier = Modifier.fillMaxWidth()) {
-                            MiniStat(
-                                label = "Income",
-                                value = state.income,
-                                color = colors.income,
-                                modifier = Modifier.weight(1f)
-                            )
-                            MiniStat(
-                                label = "Net",
-                                value = state.net,
-                                color = if (state.net < 0) colors.expense else colors.textHigh,
-                                modifier = Modifier.weight(1f)
-                            )
-                            MiniStat(
-                                label = "Balance",
-                                value = state.totalBalance,
-                                color = colors.textHigh,
-                                modifier = Modifier.weight(1f)
-                            )
-                        }
+                        MiniStat(
+                            label = "Balance",
+                            value = state.totalBalance,
+                            color = colors.textBase,
+                            modifier = Modifier.weight(1f)
+                        )
                     }
                 }
             }
@@ -112,22 +115,20 @@ fun HomeScreen(
             if (budgets.isEmpty()) {
                 item {
                     ReserveCard(
-                        modifier = Modifier.padding(horizontal = 16.dp),
+                        modifier = Modifier.padding(horizontal = EnteSpacing.xxl),
                         onClick = onOpenBudgets
                     ) {
-                        Column(modifier = Modifier.padding(16.dp)) {
-                            Text(
-                                text = "Set a monthly budget",
-                                style = MaterialTheme.typography.titleMedium,
-                                color = colors.textHigh
-                            )
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                text = "Give a category a limit and Reserve will track it here.",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = colors.textMed
-                            )
-                        }
+                        Text(
+                            text = "Set a monthly budget",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = colors.textBase
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "Give a category a limit and Reserve will track it here.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = colors.textLight
+                        )
                     }
                 }
             } else {
@@ -139,19 +140,19 @@ fun HomeScreen(
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 8.dp)
+                            .padding(horizontal = EnteSpacing.xxl, vertical = EnteSpacing.sm)
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
                                 text = name,
                                 style = MaterialTheme.typography.bodyMedium,
-                                color = colors.textMed,
+                                color = colors.textLight,
                                 modifier = Modifier.weight(1f)
                             )
                             Text(
                                 text = "${com.app.reserve.core.domain.Money.format(progress.spent)} of ${com.app.reserve.core.domain.Money.format(budget.amount)}",
                                 style = MaterialTheme.typography.labelSmall.tabular(),
-                                color = colors.textLow
+                                color = colors.textLighter
                             )
                         }
                         Spacer(modifier = Modifier.height(8.dp))
@@ -182,8 +183,7 @@ fun HomeScreen(
                     TransactionRow(
                         transaction = transaction,
                         category = state.categoryFor(transaction.categoryId),
-                        accountName = state.accountName(transaction.accountId),
-                        onClick = { onEditTransaction(transaction) }
+                        onClick = { activeActionSheetTransaction = transaction }
                     )
                     if (transaction != recent.last()) {
                         ReserveDivider()
@@ -191,6 +191,20 @@ fun HomeScreen(
                 }
             }
         }
+    }
+
+    activeActionSheetTransaction?.let { transaction ->
+        TransactionActionSheet(
+            transaction = transaction,
+            onEdit = { onEditTransaction(transaction) },
+            onDuplicate = {
+                onEditTransaction(
+                    transaction.copy(id = java.util.UUID.randomUUID().toString())
+                )
+            },
+            onDelete = { onDeleteTransaction(transaction) },
+            onDismiss = { activeActionSheetTransaction = null }
+        )
     }
 }
 
@@ -206,7 +220,7 @@ private fun MiniStat(
         Text(
             text = label,
             style = MaterialTheme.typography.labelSmall,
-            color = colors.textLow
+            color = colors.textLighter
         )
         Spacer(modifier = Modifier.height(4.dp))
         MoneyText(

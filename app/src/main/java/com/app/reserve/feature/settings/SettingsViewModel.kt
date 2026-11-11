@@ -27,6 +27,14 @@ class SettingsViewModel(private val settingsDataStore: SettingsDataStore) : View
         viewModelScope.launch { settingsDataStore.setThemeMode(mode) }
     }
 
+    fun setPrimaryColorHex(hex: String) {
+        viewModelScope.launch { settingsDataStore.setPrimaryColorHex(hex) }
+    }
+
+    fun setAppIconAlias(alias: String) {
+        viewModelScope.launch { settingsDataStore.setAppIconAlias(alias) }
+    }
+
     fun markBackupNow() {
         viewModelScope.launch { settingsDataStore.setLastBackupAt(System.currentTimeMillis()) }
     }
