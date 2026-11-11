@@ -1,4 +1,4 @@
-# Reserve
+# Reserve v1.3.0
 
 > A privacy-first, offline expense tracker with local SMS automation and a premium minimalist design.
 
@@ -20,7 +20,7 @@ Built with Kotlin, Jetpack Compose, Material 3, Room + SQLCipher, DataStore and 
 - **🔐 Encrypted database (SQLCipher, 16 KB aligned)** — The Room database is encrypted with SQLCipher 4 (AES-256). The passphrase is generated on-device with `SecureRandom` and sealed using AES-256-GCM in `EncryptedSharedPreferences`, backed by the Android Keystore. No passphrase is hardcoded or committed. Native libraries are built with 16 KB ELF page alignment (`0x4000`), verified with `readelf` and `zipalign -P 16`.
 - **📩 Automatic SMS capture** — On first grant, Reserve reads your whole SMS inbox, recognises bank debit/credit alerts, creates the matching bank accounts automatically, assigns categories where the merchant is obvious, updates balances, and suppresses duplicates with a SHA-256 fingerprint. New messages are captured live by a broadcast receiver. Everything is parsed on-device; the app remains fully usable if SMS permission is denied.
 - **🎨 Jetpack Compose UI** — 100% Compose with Material 3. Inter typography, tabular numerals, a floating pill bottom bar, a pager-driven tab shell and a calm, minimal Ente-inspired design system.
-- **🧩 Glance home-screen widget** — A Material 3 Glance widget that shows the current month's spending at a glance and opens Reserve on tap.
+- **🧩 Glance home-screen widget** — A premium 4×2 Glance widget with the Reserve mark, current balance, month-to-date spending and income, and a one-tap add button.
 - **📴 Local-first architecture** — Room is the single source of truth; UI state is derived through Kotlin `Flow`. CSV import/export and local JSON backup/restore use the system document picker — no servers involved.
 
 ### Also included

@@ -1,5 +1,6 @@
 package com.app.reserve.feature.add
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -84,6 +85,8 @@ fun AddTransactionScreen(
 ) {
     val colors = LocalReserveColors.current
     val focusManager = LocalFocusManager.current
+
+    BackHandler(onBack = onClose)
 
     var type by remember(existing) { mutableStateOf(existing?.type ?: initialType) }
     var amountText by remember(existing) { mutableStateOf(existing?.amount?.let { minorToInput(it) } ?: "") }

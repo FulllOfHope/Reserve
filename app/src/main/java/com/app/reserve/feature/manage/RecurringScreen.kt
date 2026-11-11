@@ -152,6 +152,10 @@ fun RecurringScreen(
                 onSaveRecurring(rule)
                 adding = false
                 editing = null
+            },
+            onDelete = {
+                editing?.let { onDeleteRecurring(it.id) }
+                editing = null
             }
         )
     }
@@ -170,38 +174,44 @@ private fun RecurringRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
             .padding(start = 16.dp, end = 4.dp, top = 10.dp, bottom = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = rule.note.ifBlank {
-                    categoryName ?: if (rule.type == TransactionType.TRANSFER) "Transfer" else "Recurring"
-                },
-                style = MaterialTheme.typography.titleMedium,
-                color = if (rule.paused) colors.textLighter else colors.textBase
-            )
-            Text(
-                text = buildString {
-                    append("Day ${rule.dayOfMonth}")
-                    append(" · ")
-                    append(accountName)
-                    if (rule.paused) append(" · Paused")
-                },
-                style = MaterialTheme.typography.labelSmall,
-                color = colors.textLighter
+        Row(
+            modifier = Modifier
+                .weight(1f)
+                .clickable(onClick = onClick),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = rule.note.ifBlank {
+                        categoryName ?: if (rule.type == TransactionType.TRANSFER) "Transfer" else "Recurring"
+                    },
+                    style = MaterialTheme.typography.titleMedium,
+                    color = if (rule.paused) colors.textLighter else colors.textBase
+                )
+                Text(
+                    text = buildString {
+                        append("Day ${rule.dayOfMonth}")
+                        append(" · ")
+                        append(accountName)
+                        if (rule.paused) append(" · Paused")
+                    },
+                    style = MaterialTheme.typography.labelSmall,
+                    color = colors.textLighter
+                )
+            }
+            MoneyText(
+                amount = if (rule.type == TransactionType.EXPENSE) -rule.amount else rule.amount,
+                style = MaterialTheme.typography.titleMedium.tabular(),
+                color = when (rule.type) {
+                    TransactionType.INCOME -> colors.primaryDefault
+                    TransactionType.TRANSFER -> colors.textBase
+                    TransactionType.EXPENSE -> colors.textBase
+                }
             )
         }
-        MoneyText(
-            amount = if (rule.type == TransactionType.EXPENSE) -rule.amount else rule.amount,
-            style = MaterialTheme.typography.titleMedium.tabular(),
-            color = when (rule.type) {
-                TransactionType.INCOME -> colors.primaryDefault
-                TransactionType.TRANSFER -> colors.textBase
-                TransactionType.EXPENSE -> colors.textBase
-            }
-        )
         Spacer(modifier = Modifier.width(4.dp))
         Switch(
             checked = !rule.paused,
@@ -218,7 +228,7 @@ private fun RecurringRow(
             Icon(
                 imageVector = Icons.Rounded.DeleteOutline,
                 contentDescription = "Delete rule",
-                tint = colors.textLighter,
+                tint = colors.warningDefault,
                 modifier = Modifier.size(20.dp)
             )
         }
@@ -230,7 +240,8 @@ private fun RecurringEditorDialog(
     state: LedgerState,
     existing: RecurringEntity?,
     onDismiss: () -> Unit,
-    onSave: (RecurringEntity) -> Unit
+    onSave: (RecurringEntity) -> Unit,
+    onDelete: (() -> Unit)? = null
 ) {
     val colors = LocalReserveColors.current
     var type by remember { mutableStateOf(existing?.type ?: TransactionType.EXPENSE) }
@@ -394,8 +405,21 @@ private fun RecurringEditorDialog(
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel", color = colors.textLight)
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                if (existing != null && onDelete != null) {
+                    TextButton(onClick = {
+                        onDelete()
+                        onDismiss()
+                    }) {
+                        Text("Delete", color = colors.warningDefault)
+                    }
+                }
+                TextButton(onClick = onDismiss) {
+                    Text("Cancel", color = colors.textLight)
+                }
             }
         }
     )

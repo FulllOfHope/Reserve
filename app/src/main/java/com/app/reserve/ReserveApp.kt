@@ -52,8 +52,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -107,7 +109,10 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 @Composable
-fun ReserveApp(initialOpenAddSheet: Boolean = false) {
+fun ReserveApp(
+    initialOpenAddSheet: Boolean = false,
+    onOpenAddSheetConsumed: () -> Unit = {}
+) {
     val context = LocalContext.current
     val application = context.applicationContext as ReserveApplication
 
@@ -196,7 +201,8 @@ fun ReserveApp(initialOpenAddSheet: Boolean = false) {
                 state = state,
                 ledgerViewModel = ledgerViewModel,
                 settingsViewModel = settingsViewModel,
-                initialOpenAddSheet = initialOpenAddSheet
+                initialOpenAddSheet = initialOpenAddSheet,
+                onOpenAddSheetConsumed = onOpenAddSheetConsumed
             )
         }
     }
@@ -207,7 +213,8 @@ private fun MainNavigation(
     state: com.app.reserve.feature.ledger.LedgerState,
     ledgerViewModel: LedgerViewModel,
     settingsViewModel: SettingsViewModel,
-    initialOpenAddSheet: Boolean = false
+    initialOpenAddSheet: Boolean = false,
+    onOpenAddSheetConsumed: () -> Unit = {}
 ) {
     val colors = LocalReserveColors.current
     val context = LocalContext.current
@@ -218,6 +225,24 @@ private fun MainNavigation(
     val scope = rememberCoroutineScope()
 
     val pagerState = rememberPagerState(pageCount = { 4 })
+
+    // A widget tap asks for the add screen exactly once. Keeping this outside
+    // the Home destination stops the request from firing again after the user
+    // presses back and Home re-enters composition.
+    var openAddSheetPending by rememberSaveable { mutableStateOf(initialOpenAddSheet) }
+
+    LaunchedEffect(initialOpenAddSheet) {
+        if (initialOpenAddSheet) openAddSheetPending = true
+    }
+
+    LaunchedEffect(openAddSheetPending) {
+        if (!openAddSheetPending) return@LaunchedEffect
+        openAddSheetPending = false
+        onOpenAddSheetConsumed()
+        if (navController.currentBackStackEntry?.destination?.route?.startsWith("add/") != true) {
+            navController.navigate(Routes.add(TransactionType.EXPENSE.name))
+        }
+    }
 
     fun toast(message: String) {
         Toast.makeText(context, message, Toast.LENGTH_LONG).show()
@@ -362,6 +387,11 @@ private fun MainNavigation(
                 duration = SnackbarDuration.Short
             )
         }
+    }
+
+    // Keep the widget's balance and month totals in step with the ledger.
+    LaunchedEffect(state.transactions) {
+        if (!state.loading) ReserveWidget().updateAll(context)
     }
 
     val drawerState = rememberDrawerState(initialValue = androidx.compose.material3.DrawerValue.Closed)
@@ -573,12 +603,6 @@ private fun MainNavigation(
                                 }
                             }
 
-                            LaunchedEffect(initialOpenAddSheet) {
-                                if (initialOpenAddSheet) {
-                                    navController.navigate(Routes.add(TransactionType.EXPENSE.name))
-                                }
-                            }
-
                             HorizontalPager(
                                 state = pagerState,
                                 modifier = Modifier.weight(1f)
@@ -590,6 +614,7 @@ private fun MainNavigation(
                                         onEditTransaction = { transaction ->
                                             navController.navigate(Routes.add(transaction.type.name, transaction.id))
                                         },
+                                        onDeleteTransaction = onDelete,
                                         onSeeAll = { scope.launch { pagerState.animateScrollToPage(1, animationSpec = tween(200)) } },
                                         onOpenBudgets = { navController.navigate(Routes.Budgets) },
                                         onPreviousMonth = { ledgerViewModel.shiftMonth(-1) },

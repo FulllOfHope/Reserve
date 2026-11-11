@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -165,6 +164,10 @@ fun BudgetsScreen(
                 )
                 adding = false
                 editing = null
+            },
+            onDelete = {
+                editing?.let { onDeleteBudget(it.id) }
+                editing = null
             }
         )
     }
@@ -181,52 +184,57 @@ private fun BudgetRow(
 ) {
     val colors = LocalReserveColors.current
     val amountsHidden = LocalAmountsHidden.current
-    Column(
+    Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 12.dp)
+            .padding(start = 16.dp, end = 4.dp, top = 12.dp, bottom = 12.dp),
+        verticalAlignment = Alignment.Top
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                text = name,
-                style = MaterialTheme.typography.titleMedium,
-                color = colors.textBase,
-                modifier = Modifier.weight(1f)
-            )
-            Text(
-                text = if (isOver) {
-                    "${formatMoney(spent - limit, amountsHidden)} over"
-                } else {
-                    "${formatMoney(limit - spent, amountsHidden)} left"
-                },
-                style = MaterialTheme.typography.labelSmall.tabular(),
-                color = if (isOver) colors.warningDefault else colors.textLighter
-            )
-            Spacer(modifier = Modifier.width(4.dp))
-            IconButton(onClick = onDelete, modifier = Modifier.size(32.dp)) {
-                Icon(
-                    imageVector = Icons.Rounded.DeleteOutline,
-                    contentDescription = "Delete budget",
-                    tint = colors.textLighter,
-                    modifier = Modifier.size(18.dp)
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .clickable(onClick = onClick)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = name,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = colors.textBase,
+                    modifier = Modifier.weight(1f)
+                )
+                Text(
+                    text = if (isOver) {
+                        "${formatMoney(spent - limit, amountsHidden)} over"
+                    } else {
+                        "${formatMoney(limit - spent, amountsHidden)} left"
+                    },
+                    style = MaterialTheme.typography.labelSmall.tabular(),
+                    color = if (isOver) colors.warningDefault else colors.textLighter
+                )
+            }
+            Spacer(modifier = Modifier.height(6.dp))
+            BudgetBar(spent = spent, limit = limit)
+            Spacer(modifier = Modifier.height(6.dp))
+            Row(modifier = Modifier.fillMaxWidth()) {
+                Text(
+                    text = "${formatMoney(spent, amountsHidden)} of ${formatMoney(limit, amountsHidden)}",
+                    style = MaterialTheme.typography.labelSmall.tabular(),
+                    color = colors.textLight
+                )
+                Spacer(modifier = Modifier.weight(1f))
+                Text(
+                    text = "${((if (limit <= 0L) 0f else spent.toFloat() / limit.toFloat()) * 100).toInt()}%",
+                    style = MaterialTheme.typography.labelSmall.tabular(),
+                    color = if (isOver) colors.warningDefault else colors.textLighter
                 )
             }
         }
-        Spacer(modifier = Modifier.height(6.dp))
-        BudgetBar(spent = spent, limit = limit)
-        Spacer(modifier = Modifier.height(6.dp))
-        Row(modifier = Modifier.fillMaxWidth()) {
-            Text(
-                text = "${formatMoney(spent, amountsHidden)} of ${formatMoney(limit, amountsHidden)}",
-                style = MaterialTheme.typography.labelSmall.tabular(),
-                color = colors.textLight
-            )
-            Spacer(modifier = Modifier.weight(1f))
-            Text(
-                text = "${((if (limit <= 0L) 0f else spent.toFloat() / limit.toFloat()) * 100).toInt()}%",
-                style = MaterialTheme.typography.labelSmall.tabular(),
-                color = if (isOver) colors.warningDefault else colors.textLighter
+        IconButton(onClick = onDelete, modifier = Modifier.size(36.dp)) {
+            Icon(
+                imageVector = Icons.Rounded.DeleteOutline,
+                contentDescription = "Delete budget",
+                tint = colors.warningDefault,
+                modifier = Modifier.size(18.dp)
             )
         }
     }
@@ -237,7 +245,8 @@ private fun BudgetEditorDialog(
     existing: BudgetEntity?,
     categories: List<Pair<String, String>>,
     onDismiss: () -> Unit,
-    onSave: (categoryId: String?, amount: Long) -> Unit
+    onSave: (categoryId: String?, amount: Long) -> Unit,
+    onDelete: (() -> Unit)? = null
 ) {
     val colors = LocalReserveColors.current
     var categoryId by remember { mutableStateOf(existing?.categoryId) }
@@ -309,8 +318,21 @@ private fun BudgetEditorDialog(
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel", color = colors.textLight)
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                if (existing != null && onDelete != null) {
+                    TextButton(onClick = {
+                        onDelete()
+                        onDismiss()
+                    }) {
+                        Text("Delete", color = colors.warningDefault)
+                    }
+                }
+                TextButton(onClick = onDismiss) {
+                    Text("Cancel", color = colors.textLight)
+                }
             }
         }
     )
