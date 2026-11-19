@@ -18,11 +18,13 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.ime
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.Edit
@@ -54,6 +56,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.app.reserve.core.database.CategoryEntity
 import com.app.reserve.core.database.TransactionEntity
 import com.app.reserve.core.database.TransactionType
@@ -90,9 +93,36 @@ fun ReserveCard(
 }
 
 @Composable
+fun HeaderActionButton(
+    icon: ImageVector,
+    contentDescription: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    tint: Color? = null
+) {
+    val colors = LocalReserveColors.current
+    Box(
+        modifier = modifier
+            .size(38.dp)
+            .clip(CircleShape)
+            .background(colors.fillLight)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = contentDescription,
+            tint = tint ?: colors.textBase,
+            modifier = Modifier.size(20.dp)
+        )
+    }
+}
+
+@Composable
 fun ScreenTitle(
     title: String,
     modifier: Modifier = Modifier,
+    subtitle: String? = null,
     onBack: (() -> Unit)? = null,
     onMenu: (() -> Unit)? = null,
     trailing: (@Composable () -> Unit)? = null
@@ -101,37 +131,50 @@ fun ScreenTitle(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = spacing_lg, vertical = spacing_md),
+            .height(56.dp)
+            .padding(horizontal = EnteSpacing.lg),
         verticalAlignment = Alignment.CenterVertically
     ) {
         if (onBack != null) {
-            IconButton(onClick = onBack) {
-                Icon(
-                    imageVector = Icons.Rounded.ChevronLeft,
-                    contentDescription = "Back",
-                    tint = colors.textBase
-                )
-            }
+            HeaderActionButton(
+                icon = Icons.Rounded.ChevronLeft,
+                contentDescription = "Back",
+                onClick = onBack
+            )
+            Spacer(modifier = Modifier.width(EnteSpacing.md))
         } else if (onMenu != null) {
-            IconButton(onClick = onMenu) {
-                Icon(
-                    imageVector = Icons.Rounded.Menu,
-                    contentDescription = "Menu",
-                    tint = colors.textBase
+            HeaderActionButton(
+                icon = Icons.Rounded.Menu,
+                contentDescription = "Menu",
+                onClick = onMenu
+            )
+            Spacer(modifier = Modifier.width(EnteSpacing.md))
+        }
+
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleLarge.copy(
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.SemiBold
+                ),
+                color = colors.textBase,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            if (!subtitle.isNullOrBlank()) {
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = colors.textLight,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
         }
-        
-        Text(
-            text = title,
-            style = MaterialTheme.typography.displayLarge, // H1Nunito
-            color = colors.textBase,
-            modifier = Modifier
-                .weight(1f)
-                .padding(start = if (onBack == null && onMenu == null) 0.dp else spacing_sm)
-        )
-        
+
         if (trailing != null) {
+            Spacer(modifier = Modifier.width(EnteSpacing.sm))
             trailing()
         }
     }
@@ -428,19 +471,23 @@ fun EnteButton(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     icon: ImageVector? = null,
-    containerColor: Color? = null
+    containerColor: Color? = null,
+    contentColor: Color? = null
 ) {
     val colors = LocalReserveColors.current
     val bg = containerColor ?: colors.primaryDefault
+    val fg = contentColor ?: if (bg == colors.primaryDefault) Color.White else colors.textBase
     Surface(
         modifier = modifier
+            .height(52.dp)
             .clip(CircleShape)
             .clickable(enabled = enabled, onClick = onClick),
         shape = CircleShape,
-        color = if (enabled) bg else colors.fillDark
+        color = if (enabled) bg else colors.fillDark,
+        contentColor = if (enabled) fg else colors.textLighter
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = EnteSpacing.xxl, vertical = 14.dp),
+            modifier = Modifier.padding(horizontal = 24.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center
         ) {
@@ -448,15 +495,15 @@ fun EnteButton(
                 Icon(
                     imageVector = icon,
                     contentDescription = null,
-                    tint = if (enabled) Color.White else colors.textLighter,
+                    tint = if (enabled) fg else colors.textLighter,
                     modifier = Modifier.size(20.dp)
                 )
-                Spacer(modifier = Modifier.width(EnteSpacing.sm))
+                Spacer(modifier = Modifier.width(8.dp))
             }
             Text(
                 text = text,
                 style = MaterialTheme.typography.titleMedium,
-                color = if (enabled) Color.White else colors.textLighter
+                color = if (enabled) fg else colors.textLighter
             )
         }
     }
@@ -549,6 +596,46 @@ fun AmountKeypad(
     }
 }
 
+@Composable
+fun SheetHeader(
+    title: String,
+    onClose: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val colors = LocalReserveColors.current
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleLarge.copy(
+                fontSize = 20.sp,
+                fontWeight = FontWeight.SemiBold
+            ),
+            color = colors.textBase,
+            modifier = Modifier.weight(1f)
+        )
+        Box(
+            modifier = Modifier
+                .size(32.dp)
+                .clip(CircleShape)
+                .background(colors.fillDark)
+                .clickable(onClick = onClose),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = Icons.Rounded.Close,
+                contentDescription = "Close",
+                tint = colors.textBase,
+                modifier = Modifier.size(18.dp)
+            )
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TransactionActionSheet(
@@ -561,94 +648,100 @@ fun TransactionActionSheet(
     val colors = LocalReserveColors.current
     ModalBottomSheet(
         onDismissRequest = onDismiss,
-        containerColor = colors.fillBase,
+        containerColor = colors.fillLight,
+        dragHandle = {
+            Box(
+                modifier = Modifier
+                    .padding(top = 12.dp, bottom = 8.dp)
+                    .size(width = 32.dp, height = 4.dp)
+                    .clip(CircleShape)
+                    .background(colors.textLighter.copy(alpha = 0.4f))
+            )
+        },
         contentWindowInsets = { WindowInsets.ime },
-        shape = RoundedCornerShape(topStart = EnteRadius.xl, topEnd = EnteRadius.xl)
+        shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)
     ) {
-        Column(
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = EnteSpacing.xxl, vertical = EnteSpacing.xl)
+                .navigationBarsPadding()
+                .padding(horizontal = 16.dp, vertical = 20.dp),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceEvenly,
-                verticalAlignment = Alignment.CenterVertically
+            // Edit
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(12.dp))
+                    .clickable {
+                        onDismiss()
+                        onEdit()
+                    }
+                    .padding(horizontal = 12.dp, vertical = 8.dp)
             ) {
-                // Edit Action
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(EnteRadius.md))
-                        .clickable {
-                            onDismiss()
-                            onEdit()
-                        }
-                        .padding(EnteSpacing.md)
-                ) {
-                    Icon(
-                        imageVector = Icons.Rounded.Edit,
-                        contentDescription = "Edit",
-                        tint = colors.textBase,
-                        modifier = Modifier.size(24.dp)
-                    )
-                    Text(
-                        text = "Edit",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = colors.textBase,
-                        modifier = Modifier.padding(top = 8.dp)
-                    )
-                }
+                Icon(
+                    imageVector = Icons.Rounded.Edit,
+                    contentDescription = "Edit",
+                    tint = colors.textBase,
+                    modifier = Modifier.size(24.dp)
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "Edit",
+                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 12.sp),
+                    color = colors.textBase
+                )
+            }
 
-                // Duplicate Action
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(EnteRadius.md))
-                        .clickable {
-                            onDismiss()
-                            onDuplicate()
-                        }
-                        .padding(EnteSpacing.md)
-                ) {
-                    Icon(
-                        imageVector = Icons.Rounded.ContentCopy,
-                        contentDescription = "Duplicate",
-                        tint = colors.textBase,
-                        modifier = Modifier.size(24.dp)
-                    )
-                    Text(
-                        text = "Duplicate",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = colors.textBase,
-                        modifier = Modifier.padding(top = 8.dp)
-                    )
-                }
+            // Duplicate
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(12.dp))
+                    .clickable {
+                        onDismiss()
+                        onDuplicate()
+                    }
+                    .padding(horizontal = 12.dp, vertical = 8.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.ContentCopy,
+                    contentDescription = "Duplicate",
+                    tint = colors.textBase,
+                    modifier = Modifier.size(24.dp)
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "Duplicate",
+                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 12.sp),
+                    color = colors.textBase
+                )
+            }
 
-                // Delete Action
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(EnteRadius.md))
-                        .clickable {
-                            onDismiss()
-                            onDelete()
-                        }
-                        .padding(EnteSpacing.md)
-                ) {
-                    Icon(
-                        imageVector = Icons.Rounded.DeleteOutline,
-                        contentDescription = "Delete",
-                        tint = colors.warningDefault,
-                        modifier = Modifier.size(24.dp)
-                    )
-                    Text(
-                        text = "Delete",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = colors.warningDefault,
-                        modifier = Modifier.padding(top = 8.dp)
-                    )
-                }
+            // Delete (Last, Warning Red)
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(12.dp))
+                    .clickable {
+                        onDismiss()
+                        onDelete()
+                    }
+                    .padding(horizontal = 12.dp, vertical = 8.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.DeleteOutline,
+                    contentDescription = "Delete",
+                    tint = colors.warningDefault,
+                    modifier = Modifier.size(24.dp)
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "Delete",
+                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 12.sp),
+                    color = colors.warningDefault
+                )
             }
         }
     }

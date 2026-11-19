@@ -47,6 +47,7 @@ import com.app.reserve.core.designsystem.CategoryAvatar
 import com.app.reserve.core.designsystem.CategoryIconChoices
 import com.app.reserve.core.designsystem.CategoryPalette
 import com.app.reserve.core.designsystem.EmptyState
+import com.app.reserve.core.designsystem.HeaderActionButton
 import com.app.reserve.core.designsystem.LocalReserveColors
 import com.app.reserve.core.designsystem.ReserveCard
 import com.app.reserve.core.designsystem.ScreenTitle
@@ -75,9 +76,12 @@ fun CategoriesScreen(
             title = "Categories",
             onBack = onBack,
             trailing = {
-                IconButton(onClick = { adding = true }) {
-                    Icon(Icons.Rounded.Add, contentDescription = "Add category", tint = colors.primaryDefault)
-                }
+                HeaderActionButton(
+                    icon = Icons.Rounded.Add,
+                    contentDescription = "Add category",
+                    onClick = { adding = true },
+                    tint = colors.primaryDefault
+                )
             }
         )
 

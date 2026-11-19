@@ -4,8 +4,7 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 
 /**
- * "Reserve Calm" tokens. Values follow the Ente Colour Tokens collection
- * (Page, Fill, Stroke, Text and Ente Photos Primary/Warning).
+ * Ente Colour Tokens for Light and Dark themes.
  */
 data class ReserveColors(
     val isDark: Boolean,
@@ -13,11 +12,11 @@ data class ReserveColors(
     val fillBase: Color,
     /** Raised surface (#FFFFFF / #212121). */
     val surface: Color,
-    /** Subtle fill (#F5F5F5 / #0A0A0A). */
+    /** Subtle fill (#FFFFFF / #212121). */
     val fillLight: Color,
-    /** Hairline stroke (#EBEBEB / #212121). */
+    /** Hairline stroke / container (#F5F5F5 / #2C2C2E). */
     val fillDark: Color,
-    /** Track / inactive fill (#E9E9E9 / #141414). */
+    /** Track / inactive fill (#EBEBEB / #1C1C1E). */
     val fillDarker: Color,
     val textBase: Color,
     /** Secondary text (#666666 / #B3B3B3). */
@@ -34,9 +33,9 @@ val ReserveLightColors = ReserveColors(
     isDark = false,
     fillBase = Color(0xFFFAFAFA),
     surface = Color(0xFFFFFFFF),
-    fillLight = Color(0xFFF5F5F5),
-    fillDark = Color(0xFFEBEBEB),
-    fillDarker = Color(0xFFE9E9E9),
+    fillLight = Color(0xFFFFFFFF),
+    fillDark = Color(0xFFF5F5F5),
+    fillDarker = Color(0xFFEBEBEB),
     textBase = Color(0xFF1C1C1E),
     textLight = Color(0xFF666666),
     textLighter = Color(0xFF8E8E93),
@@ -50,14 +49,14 @@ val ReserveDarkColors = ReserveColors(
     isDark = true,
     fillBase = Color(0xFF161616),
     surface = Color(0xFF212121),
-    fillLight = Color(0xFF0A0A0A),
-    fillDark = Color(0xFF212121),
-    fillDarker = Color(0xFF141414),
+    fillLight = Color(0xFF212121),
+    fillDark = Color(0xFF2C2C2E),
+    fillDarker = Color(0xFF1C1C1E),
     textBase = Color(0xFFFFFFFF),
     textLight = Color(0xFFB3B3B3),
     textLighter = Color(0xFF7F7F7F),
     textReverse = Color(0xFF000000),
-    strokeFaint = Color(0xFF212121),
+    strokeFaint = Color(0xFF2A2A2A),
     primaryDefault = Color(0xFF069D1E),
     warningDefault = Color(0xFFDD3434)
 )

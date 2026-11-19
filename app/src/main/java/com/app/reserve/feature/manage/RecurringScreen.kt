@@ -47,6 +47,7 @@ import androidx.compose.ui.unit.dp
 import com.app.reserve.core.database.RecurringEntity
 import com.app.reserve.core.database.TransactionType
 import com.app.reserve.core.designsystem.EmptyState
+import com.app.reserve.core.designsystem.HeaderActionButton
 import com.app.reserve.core.designsystem.LocalReserveColors
 import com.app.reserve.core.designsystem.MoneyText
 import com.app.reserve.core.designsystem.ReserveDivider
@@ -75,9 +76,12 @@ fun RecurringScreen(
             title = "Recurring",
             onBack = onBack,
             trailing = {
-                IconButton(onClick = { adding = true }) {
-                    Icon(Icons.Rounded.Add, contentDescription = "Add recurring entry", tint = colors.primaryDefault)
-                }
+                HeaderActionButton(
+                    icon = Icons.Rounded.Add,
+                    contentDescription = "Add recurring entry",
+                    onClick = { adding = true },
+                    tint = colors.primaryDefault
+                )
             }
         )
 

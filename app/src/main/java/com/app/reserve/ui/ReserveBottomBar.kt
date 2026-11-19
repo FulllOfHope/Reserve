@@ -1,11 +1,12 @@
 package com.app.reserve.ui
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -27,8 +28,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
-import com.app.reserve.core.designsystem.EnteRadius
-import com.app.reserve.core.designsystem.EnteSpacing
 import com.app.reserve.core.designsystem.LocalReserveColors
 
 enum class BottomDestination(
@@ -51,27 +50,32 @@ fun ReserveBottomBar(
     modifier: Modifier = Modifier
 ) {
     val colors = LocalReserveColors.current
+    val isDark = colors.isDark
+    val selectedPillColor = if (isDark) Color(0xFF323234) else Color(0xFFF0F0F0)
+
     Surface(
-        modifier = modifier.fillMaxWidth(),
-        color = colors.fillBase,
+        modifier = modifier
+            .navigationBarsPadding()
+            .padding(horizontal = 24.dp, vertical = 16.dp),
+        shape = RoundedCornerShape(20.dp),
+        color = colors.fillLight,
+        border = BorderStroke(1.dp, colors.strokeFaint),
         shadowElevation = 0.dp,
         tonalElevation = 0.dp
     ) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = EnteSpacing.lg, vertical = EnteSpacing.sm),
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(EnteSpacing.md)
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             BottomDestination.entries.forEachIndexed { index, destination ->
                 val selected = selectedIndex == index
-                val itemShape = RoundedCornerShape(EnteRadius.lg)
+                val itemShape = RoundedCornerShape(14.dp)
                 Box(
                     modifier = Modifier
-                        .size(48.dp)
+                        .size(44.dp)
                         .clip(itemShape)
-                        .background(if (selected) colors.fillLight else Color.Transparent)
+                        .background(if (selected) selectedPillColor else Color.Transparent)
                         .clickable { onSelectIndex(index) },
                     contentAlignment = Alignment.Center
                 ) {

@@ -2,7 +2,7 @@
 
 > A privacy-first, offline expense tracker with local SMS automation and a premium minimalist design.
 
-Reserve is a single-user Android expense tracker that keeps every rupee on your device. There is no account to create, no cloud sync, no ads, no telemetry, and **no `INTERNET` permission** — the app cannot phone home even if it wanted to.
+Reserve is a single-user Android expense tracker that keeps every rupee on your device. There is no account to create, no cloud sync, no ads and no telemetry. Your financial data never leaves the device — the only network request the app makes is an optional HTTPS check of GitHub Releases for a newer version (disableable in Settings).
 
 Built with Kotlin, Jetpack Compose, Material 3, Room + SQLCipher, DataStore and Glance.
 
@@ -10,7 +10,7 @@ Built with Kotlin, Jetpack Compose, Material 3, Room + SQLCipher, DataStore and 
   <img alt="Platform" src="https://img.shields.io/badge/platform-Android-3DDC84?style=flat-square" />
   <img alt="Kotlin" src="https://img.shields.io/badge/Kotlin-2.0-7F52FF?style=flat-square" />
   <img alt="minSdk" src="https://img.shields.io/badge/minSdk-26-0FB70F?style=flat-square" />
-  <img alt="No internet" src="https://img.shields.io/badge/permissions-no%20INTERNET-0FB70F?style=flat-square" />
+  <img alt="Update check only" src="https://img.shields.io/badge/network-update%20check%20only-0FB70F?style=flat-square" />
 </p>
 
 ---
@@ -40,7 +40,7 @@ Built with Kotlin, Jetpack Compose, Material 3, Room + SQLCipher, DataStore and 
 
 | Guarantee | How it is enforced |
 |---|---|
-| No network access | `AndroidManifest.xml` declares no `android.permission.INTERNET`; the merged manifest is checked as part of release verification. |
+| No background data collection | The only network access is an optional HTTPS GET to the GitHub Releases API to check for updates. No analytics, no crash reports, no telemetry. |
 | Encrypted at rest | SQLCipher-encrypted Room database; random 256-bit passphrase stored via `EncryptedSharedPreferences`. |
 | SMS stays on-device | `SmsParser` and `SmsImporter` read bank messages locally. The receiver is protected by `android.permission.BROADCAST_SMS`, so only the system can invoke it. |
 | No duplicate imports | Every message is hashed (sender + timestamp + body) and recorded in `sms_imports`; `INSERT OR IGNORE` makes overlap between the live receiver and inbox backfill harmless. |

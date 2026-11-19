@@ -9,6 +9,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -85,6 +86,8 @@ import androidx.navigation.navArgument
 import com.app.reserve.core.application.ReserveApplication
 import com.app.reserve.core.database.TransactionEntity
 import com.app.reserve.core.database.TransactionType
+import com.app.reserve.core.designsystem.EnteSpacing
+import com.app.reserve.core.designsystem.HeaderActionButton
 import com.app.reserve.core.designsystem.LocalReserveColors
 import com.app.reserve.core.designsystem.ReserveTheme
 import com.app.reserve.core.designsystem.spacing_lg
@@ -617,43 +620,65 @@ private fun MainNavigation(
                 ) {
                     composable(Routes.Home) {
                         Column(modifier = Modifier.fillMaxSize()) {
-                            // Dynamic Tab Header (Single Title Rule, Anti-Jitter, 56.dp static height)
-                            val headerTitle = when (pagerState.currentPage) {
-                                0 -> "Reserve"
-                                1 -> "Transactions"
-                                2 -> "Insights"
-                                3 -> "Settings"
-                                else -> "Reserve"
-                            }
 
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .height(56.dp)
-                                    .padding(horizontal = spacing_lg),
+                                    .padding(horizontal = EnteSpacing.lg),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                IconButton(onClick = { scope.launch { drawerState.open() } }) {
-                                    Icon(
-                                        imageVector = Icons.Rounded.Menu,
-                                        contentDescription = "Menu",
-                                        tint = colors.textBase
-                                    )
-                                }
-                                Spacer(modifier = Modifier.width(spacing_lg))
-                                Text(
-                                    text = headerTitle,
-                                    style = MaterialTheme.typography.displayLarge.copy(fontSize = 24.sp, fontWeight = FontWeight.ExtraBold),
-                                    color = colors.textBase,
-                                    modifier = Modifier.weight(1f)
+                                HeaderActionButton(
+                                    icon = Icons.Rounded.Menu,
+                                    contentDescription = "Menu",
+                                    onClick = { scope.launch { drawerState.open() } }
                                 )
-                                IconButton(onClick = { navController.navigate(Routes.add(TransactionType.EXPENSE.name)) }) {
-                                    Icon(
-                                        imageVector = Icons.Rounded.Add,
-                                        contentDescription = "Add Expense",
-                                        tint = colors.textBase
+                                Spacer(modifier = Modifier.width(EnteSpacing.md))
+                                if (pagerState.currentPage == 0) {
+                                    Row(
+                                        modifier = Modifier.weight(1f),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.Center
+                                    ) {
+                                        Image(
+                                            painter = painterResource(id = R.drawable.ic_reserve_mark),
+                                            contentDescription = null,
+                                            colorFilter = ColorFilter.tint(colors.textBase),
+                                            modifier = Modifier.size(24.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text(
+                                            text = "Reserve",
+                                            style = MaterialTheme.typography.displayLarge.copy(
+                                                fontSize = 20.sp,
+                                                fontWeight = FontWeight.ExtraBold
+                                            ),
+                                            color = colors.textBase
+                                        )
+                                    }
+                                } else {
+                                    val headerTitle = when (pagerState.currentPage) {
+                                        1 -> "Transactions"
+                                        2 -> "Insights"
+                                        3 -> "Settings"
+                                        else -> "Reserve"
+                                    }
+                                    Text(
+                                        text = headerTitle,
+                                        style = MaterialTheme.typography.titleLarge.copy(
+                                            fontSize = 24.sp,
+                                            fontWeight = FontWeight.SemiBold
+                                        ),
+                                        color = colors.textBase,
+                                        modifier = Modifier.weight(1f)
                                     )
                                 }
+                                Spacer(modifier = Modifier.width(EnteSpacing.sm))
+                                HeaderActionButton(
+                                    icon = Icons.Rounded.Add,
+                                    contentDescription = "Add Expense",
+                                    onClick = { navController.navigate(Routes.add(TransactionType.EXPENSE.name)) }
+                                )
                             }
 
                             HorizontalPager(

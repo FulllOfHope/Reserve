@@ -25,7 +25,7 @@ val spacing_xxxl = spacingXxxl
 val radiusSm = 4.dp
 val radiusMd = 12.dp
 val radiusLg = 16.dp
-val radiusXl = 24.dp
+val radiusXl = 20.dp
 
 val radius_sm = radiusSm
 val radius_md = radiusMd
