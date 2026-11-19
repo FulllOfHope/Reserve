@@ -69,22 +69,20 @@ fun ReserveCard(
     val shape = RoundedCornerShape(radius_xl)
     if (onClick != null) {
         Surface(
-            modifier = modifier
-                .fillMaxWidth()
-                .border(1.dp, colors.strokeFaint, shape),
+            modifier = modifier.fillMaxWidth(),
             shape = shape,
             color = colors.fillLight,
+            shadowElevation = 0.dp,
             onClick = onClick
         ) {
             Column(modifier = Modifier.padding(spacing_xl), content = content)
         }
     } else {
         Surface(
-            modifier = modifier
-                .fillMaxWidth()
-                .border(1.dp, colors.strokeFaint, shape),
+            modifier = modifier.fillMaxWidth(),
             shape = shape,
-            color = colors.fillLight
+            color = colors.fillLight,
+            shadowElevation = 0.dp
         ) {
             Column(modifier = Modifier.padding(spacing_xl), content = content)
         }
@@ -103,7 +101,7 @@ fun ScreenTitle(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = spacing_xxl, vertical = spacing_md),
+            .padding(horizontal = spacing_lg, vertical = spacing_md),
         verticalAlignment = Alignment.CenterVertically
     ) {
         if (onBack != null) {
@@ -150,7 +148,7 @@ fun SectionLabel(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = spacing_xxl, vertical = spacing_sm),
+            .padding(horizontal = spacing_lg, vertical = spacing_sm),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
@@ -229,7 +227,7 @@ fun TransactionRow(
         modifier = modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
-            .padding(horizontal = EnteSpacing.xxl, vertical = EnteSpacing.md),
+            .padding(horizontal = EnteSpacing.lg, vertical = EnteSpacing.md),
         verticalAlignment = Alignment.CenterVertically
     ) {
         CategoryAvatar(
@@ -281,7 +279,7 @@ fun ReserveDivider(modifier: Modifier = Modifier) {
         modifier = modifier
             .fillMaxWidth()
             .height(1.dp)
-            .padding(start = 72.dp, end = spacing_xxl)
+            .padding(start = 72.dp, end = spacing_lg)
             .background(colors.strokeFaint)
     )
 }
@@ -297,7 +295,7 @@ fun MonthSwitcher(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = spacing_xxl),
+            .padding(horizontal = spacing_lg),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Center
     ) {
@@ -367,7 +365,7 @@ fun EmptyState(
         Column(
             modifier = modifier
                 .fillMaxWidth()
-                .padding(horizontal = spacing_xxl, vertical = 48.dp),
+                .padding(horizontal = spacing_lg, vertical = 48.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Icon(

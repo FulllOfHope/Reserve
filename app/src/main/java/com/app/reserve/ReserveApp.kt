@@ -60,6 +60,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.painterResource
@@ -412,11 +413,10 @@ private fun MainNavigation(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Image(
-                        painter = painterResource(id = R.drawable.ic_launcher_monochrome),
+                        painter = painterResource(id = R.drawable.ic_reserve_mark),
                         contentDescription = "App Logo",
-                        modifier = Modifier
-                            .size(42.dp)
-                            .clip(RoundedCornerShape(10.dp))
+                        colorFilter = ColorFilter.tint(colors.textBase),
+                        modifier = Modifier.size(42.dp)
                     )
                     Spacer(modifier = Modifier.width(16.dp))
                     Text(
@@ -777,8 +777,6 @@ private fun MainNavigation(
                         modifier = Modifier
                             .fillMaxWidth()
                             .align(Alignment.BottomCenter)
-                            .padding(bottom = 24.dp),
-                        contentAlignment = Alignment.Center
                     ) {
                         ReserveBottomBar(
                             currentRoute = currentRoute,

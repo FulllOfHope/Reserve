@@ -59,26 +59,29 @@ private data class WidgetPalette(
     val surface: Color,
     val textBase: Color,
     val textLight: Color,
+    val textLighter: Color,
     val stroke: Color,
     val primary: Color
 )
 
 private val LightPalette = WidgetPalette(
-    base = Color(0xFFFFFFFF),
-    surface = Color(0xFFF5F5F5),
+    base = Color(0xFFFAFAFA),
+    surface = Color(0xFFFFFFFF),
     textBase = Color(0xFF1C1C1E),
-    textLight = Color(0xFF8E8E93),
-    stroke = Color(0xFFEDEDED),
-    primary = Color(0xFF0FB70F)
+    textLight = Color(0xFF666666),
+    textLighter = Color(0xFF8E8E93),
+    stroke = Color(0xFFEBEBEB),
+    primary = Color(0xFF08C225)
 )
 
 private val DarkPalette = WidgetPalette(
-    base = Color(0xFF000000),
-    surface = Color(0xFF151515),
+    base = Color(0xFF161616),
+    surface = Color(0xFF212121),
     textBase = Color(0xFFFFFFFF),
-    textLight = Color(0xFFA1A1AA),
-    stroke = Color(0xFF292929),
-    primary = Color(0xFF067018)
+    textLight = Color(0xFFB3B3B3),
+    textLighter = Color(0xFF7F7F7F),
+    stroke = Color(0xFF212121),
+    primary = Color(0xFF069D1E)
 )
 
 class ReserveWidget : GlanceAppWidget() {
@@ -97,7 +100,14 @@ class ReserveWidget : GlanceAppWidget() {
                 mode == Configuration.UI_MODE_NIGHT_YES
             }
         }
-        val palette = if (dark) DarkPalette else LightPalette
+        val basePalette = if (dark) DarkPalette else LightPalette
+        val accentHex = settings?.primaryColorHex?.let {
+            if (it.startsWith("#")) it else "#$it"
+        }
+        val accent = accentHex?.let { hex ->
+            runCatching { Color(android.graphics.Color.parseColor(hex)) }.getOrNull()
+        }
+        val palette = if (accent != null) basePalette.copy(primary = accent) else basePalette
         val hidden = settings?.hideAmounts == true
 
         val figures = runCatching {
@@ -158,18 +168,15 @@ private fun ReserveWidgetContent(
     Box(
         modifier = GlanceModifier
             .fillMaxSize()
-            .background(palette.stroke)
+            .background(palette.base)
             .cornerRadius(24.dp)
     ) {
         Column(
             modifier = GlanceModifier
                 .fillMaxSize()
-                .padding(1.dp)
-                .background(palette.base)
-                .cornerRadius(23.dp)
                 .padding(
-                    horizontal = 15.dp,
-                    vertical = if (compact) 10.dp else 13.dp
+                    horizontal = 16.dp,
+                    vertical = if (compact) 12.dp else 16.dp
                 )
         ) {
             Row(
@@ -199,7 +206,7 @@ private fun ReserveWidgetContent(
                         Text(
                             text = monthLabel,
                             style = TextStyle(
-                                color = ColorProvider(palette.textLight),
+                                color = ColorProvider(palette.textLighter),
                                 fontSize = 9.sp,
                                 fontWeight = FontWeight.Medium,
                                 fontFamily = FontFamily("sans-serif-medium")
@@ -216,7 +223,7 @@ private fun ReserveWidgetContent(
             Text(
                 text = "CURRENT BALANCE",
                 style = TextStyle(
-                    color = ColorProvider(palette.textLight),
+                    color = ColorProvider(palette.textLighter),
                     fontSize = 9.sp,
                     fontWeight = FontWeight.Medium,
                     fontFamily = FontFamily("sans-serif-medium")
@@ -282,7 +289,7 @@ private fun Stat(
         Text(
             text = label,
             style = TextStyle(
-                color = ColorProvider(palette.textLight),
+                color = ColorProvider(palette.textLighter),
                 fontSize = 8.sp,
                 fontWeight = FontWeight.Medium,
                 fontFamily = FontFamily("sans-serif-medium")

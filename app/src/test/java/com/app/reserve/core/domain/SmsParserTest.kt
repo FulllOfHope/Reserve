@@ -155,13 +155,63 @@ class SmsParserTest {
     }
 
     @Test
-    fun `fingerprints are stable and unique`() {
+    fun `fingerprints are stable within a minute bucket`() {
         val body = "Rs 100 debited from a/c XX1111"
         val first = SmsParser.parse("VK-HDFCBK", body, timestamp)!!
-        val again = SmsParser.parse("VK-HDFCBK", body, timestamp)!!
-        val otherTime = SmsParser.parse("VK-HDFCBK", body, timestamp + 1)!!
+        val again = SmsParser.parse("VK-HDFCBK", body, timestamp + 30_000)!!
+        val later = SmsParser.parse("VK-HDFCBK", body, timestamp + 120_000)!!
         assertEquals(first.fingerprint, again.fingerprint)
-        assertFalse(first.fingerprint == otherTime.fingerprint)
+        assertFalse(first.fingerprint == later.fingerprint)
         assertTrue(first.fingerprint.length == 64)
+    }
+
+    @Test
+    fun `parses exact canara zomato alert with balance`() {
+        val body = "Dear Customer, Acct XXXX0105 Dr. INR 123.69 on 17/11/26 to ZOMATO; " +
+            "UPI: xxxx; Bal INR 582.18.Not you?SMS BLOCKUPI to xxxxxxxxx-CanaraBank"
+        val sms = SmsParser.parse("CAN-CANBNK", body, timestamp)!!
+        assertEquals(TransactionType.EXPENSE, sms.type)
+        assertEquals(12_369L, sms.amountMinor)
+        assertEquals(58_218L, sms.balanceAfterMinor)
+        assertEquals("Canara Bank ••0105", sms.accountName)
+        assertEquals("Food", sms.categoryName)
+        assertEquals("SMS · Canara Bank ••0105", sms.note)
+    }
+
+    @Test
+    fun `detects canara bank without a space`() {
+        val sms = parse("XX-UNKNOWN", "Rs 500 debited. -CanaraBank")!!
+        assertEquals("Canara Bank", sms.accountName)
+    }
+
+    @Test
+    fun `fingerprint survives whitespace and timestamp variance`() {
+        val firstBody = "Dear Customer, Acct XXXX0105 Dr. INR 123.69 on 17/11/26 to ZOMATO; " +
+            "UPI: xxxx; Bal INR 582.18.Not you?SMS BLOCKUPI to xxxxxxxxx-CanaraBank"
+        val secondBody = "Dear  Customer, Acct XXXX0105 Dr. INR 123.69 on 17/11/26 to ZOMATO; " +
+            "UPI: xxxx; Bal INR 582.18. Not you? SMS BLOCKUPI to xxxxxxxxx-CanaraBank"
+        // Anchor inside the minute so the 45s variance stays in one bucket.
+        val firstTime = timestamp - 10_000L
+        val first = SmsParser.parse("CAN-CANBNK", firstBody, firstTime)!!
+        val second = SmsParser.parse(" can-canbnk ", secondBody, firstTime + 45_000L)!!
+        assertEquals(first.fingerprint, second.fingerprint)
+        assertEquals(first.amountMinor, second.amountMinor)
+        assertEquals(first.balanceAfterMinor, second.balanceAfterMinor)
+    }
+
+    @Test
+    fun `captures available balance without using it as the amount`() {
+        val sms = parse(
+            "VK-HDFCBK",
+            "Rs.1,250.50 debited from a/c XX1234 on 11-11-26. Avl Bal Rs.10,000.00. -HDFC Bank"
+        )!!
+        assertEquals(125_050L, sms.amountMinor)
+        assertEquals(1_000_000L, sms.balanceAfterMinor)
+    }
+
+    @Test
+    fun `balance is null when the sms does not print one`() {
+        val sms = parse("AD-ICICIB", "INR 2,000.00 has been credited to your account ending 2233.")!!
+        assertNull(sms.balanceAfterMinor)
     }
 }

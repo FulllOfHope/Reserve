@@ -8,10 +8,12 @@ object IconSwitcher {
 
     const val DEFAULT_ALIAS = "com.app.reserve.MainActivityDefault"
     const val MONOCHROME_ALIAS = "com.app.reserve.MainActivityMonochrome"
+    const val GLASSY_ALIAS = "com.app.reserve.MainActivityGlassy"
 
     val aliases = listOf(
         DEFAULT_ALIAS,
-        MONOCHROME_ALIAS
+        MONOCHROME_ALIAS,
+        GLASSY_ALIAS
     )
 
     fun setAppIcon(context: Context, targetAlias: String) {

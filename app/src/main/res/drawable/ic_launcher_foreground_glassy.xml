@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Glassy variant: translucent frosted plate plus a crisp dark mark. No black
+     plate anywhere in the layer stack. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#33FFFFFF"
+        android:strokeColor="#80FFFFFF"
+        android:strokeWidth="1"
+        android:pathData="M36,12 H72 C84.15,12 96,23.85 96,36 V72 C96,84.15 84.15,96 72,96 H36 C23.85,96 12,84.15 12,72 V36 C12,23.85 23.85,12 36,12 Z" />
+    <path
+        android:fillColor="#1C1C1E"
+        android:fillType="evenOdd"
+        android:pathData="M54,22 L84,32 V53 C84,69 72,80 54,86 C36,80 24,69 24,53 V32 L54,22 Z M54,38 L45,49 H51 V64 H57 V49 H63 Z" />
+</vector>

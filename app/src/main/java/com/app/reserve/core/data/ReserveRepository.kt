@@ -11,10 +11,12 @@ import com.app.reserve.core.database.TransactionEntity
 import com.app.reserve.core.database.TransactionType
 import com.app.reserve.core.domain.Dates
 import com.app.reserve.core.domain.LedgerMath
+import com.app.reserve.core.domain.LedgerReconciliation
 import com.app.reserve.core.domain.ParsedSms
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
+import java.util.Locale
 import java.util.UUID
 import kotlinx.coroutines.flow.Flow
 
@@ -334,78 +336,220 @@ class ReserveRepository(private val database: ReserveDatabase) {
     }
 
     /**
-     * Imports parsed SMS rows in one transaction. A fingerprint is written
-     * first, so a message can never create two transactions even if the live
-     * receiver and the inbox backfill run at the same time.
+     * Imports parsed SMS rows oldest-first. Each message is wrapped in its own
+     * nested transaction: a failure rolls back only that message (including its
+     * balance change), while successful rows and fingerprints stay committed.
      */
     suspend fun importSmsMessages(messages: List<ParsedSms>): SmsImportResult {
         if (messages.isEmpty()) return SmsImportResult(0, 0)
         var imported = 0
         var duplicates = 0
+        val ordered = messages.sortedBy { it.timestamp }
         database.withTransaction {
             val accountsByName = accountDao.getAll()
-                .associateByTo(mutableMapOf()) { it.name.lowercase() }
+                .associateByTo(mutableMapOf()) { it.name.lowercase(Locale.ROOT) }
             val categoriesByKey = categoryDao.getAll()
-                .associateByTo(mutableMapOf()) { "${it.type}|${it.name.lowercase()}" }
+                .associateByTo(mutableMapOf()) { "${it.type}|${it.name.lowercase(Locale.ROOT)}" }
 
-            for (message in messages) {
-                val transactionId = UUID.randomUUID().toString()
-                val inserted = smsImportDao.insert(
-                    SmsImportEntity(
-                        fingerprint = message.fingerprint,
-                        transactionId = transactionId,
-                        importedAt = System.currentTimeMillis()
-                    )
-                )
-                if (inserted == -1L) {
-                    duplicates++
-                    continue
-                }
-                try {
-                    val accountKey = message.accountName.lowercase()
-                    val account = accountsByName[accountKey] ?: AccountEntity(
-                        UUID.randomUUID().toString(),
-                        message.accountName,
-                        0L
-                    ).also {
-                        accountDao.insert(it)
-                        accountsByName[accountKey] = it
-                    }
-
-                    val category = message.categoryName?.let { name ->
-                        val key = "${message.type}|${name.lowercase()}"
-                        categoriesByKey[key] ?: CategoryEntity(
-                            UUID.randomUUID().toString(),
-                            name,
-                            "#948B7A",
-                            "other",
-                            message.type
-                        ).also {
-                            categoryDao.insert(it)
-                            categoriesByKey[key] = it
+            for (message in ordered) {
+                val accountKey = message.accountName.lowercase(Locale.ROOT)
+                val wasImported = runCatching {
+                    database.withTransaction {
+                        // Fingerprint check first: this also covers a backfill
+                        // racing the live receiver inside the same DB lock.
+                        if (smsImportDao.getByFingerprint(message.fingerprint) != null) {
+                            return@withTransaction false
                         }
-                    }
 
-                    val transaction = TransactionEntity(
-                        id = transactionId,
-                        amount = message.amountMinor,
-                        type = message.type,
-                        categoryId = category?.id,
-                        accountId = account.id,
-                        timestamp = message.timestamp,
-                        note = message.note
-                    )
-                    applyBalance(transaction, reverse = false)
-                    transactionDao.insert(transaction)
-                    imported++
-                } catch (_: Exception) {
-                    // Let a later scan retry this message instead of losing it.
-                    smsImportDao.deleteByFingerprint(message.fingerprint)
+                        var account = accountsByName[accountKey]
+                        val accountCreatedNow = account == null
+                        if (account == null) {
+                            val id = UUID.randomUUID().toString()
+                            val opening = message.balanceAfterMinor?.let { balance ->
+                                LedgerReconciliation.openingForBalance(
+                                    balanceAfterMinor = balance,
+                                    type = message.type,
+                                    amount = message.amountMinor,
+                                    accountId = id
+                                )
+                            } ?: 0L
+                            account = AccountEntity(
+                                id = id,
+                                name = message.accountName,
+                                balance = opening,
+                                openingBalanceMinor = opening
+                            )
+                            accountDao.insert(account!!)
+                            accountsByName[accountKey] = account!!
+                        }
+
+                        // Transaction-level guard: the same movement may arrive
+                        // with two fingerprints if a multipart body differs.
+                        val duplicate = transactionDao.findDuplicateSmsTransaction(
+                            accountId = account!!.id,
+                            amount = message.amountMinor,
+                            type = message.type,
+                            note = message.note,
+                            from = message.timestamp - LedgerReconciliation.DUPLICATE_WINDOW_MILLIS,
+                            to = message.timestamp + LedgerReconciliation.DUPLICATE_WINDOW_MILLIS
+                        )
+                        if (duplicate != null) {
+                            recordSmsImport(message, account!!.id, duplicate.id)
+                            return@withTransaction false
+                        }
+
+                        val category = message.categoryName?.let { name ->
+                            val key = "${message.type}|${name.lowercase(Locale.ROOT)}"
+                            categoriesByKey[key] ?: CategoryEntity(
+                                UUID.randomUUID().toString(),
+                                name,
+                                "#948B7A",
+                                "other",
+                                message.type
+                            ).also {
+                                categoryDao.insert(it)
+                                categoriesByKey[key] = it
+                            }
+                        }
+
+                        val transactionId = UUID.randomUUID().toString()
+                        val transaction = TransactionEntity(
+                            id = transactionId,
+                            amount = message.amountMinor,
+                            type = message.type,
+                            categoryId = category?.id,
+                            accountId = account!!.id,
+                            timestamp = message.timestamp,
+                            note = message.note
+                        )
+                        applyBalance(transaction, reverse = false)
+                        transactionDao.insert(transaction)
+
+                        if (message.balanceAfterMinor != null) {
+                            val newestForAccount = ordered
+                                .filter { it.accountName.equals(account!!.name, ignoreCase = true) }
+                                .maxOf { it.timestamp }
+                            val newestKnown = maxOf(
+                                newestForAccount,
+                                smsImportDao.latestMessageDate(account!!.id) ?: 0L
+                            )
+                            // Out-of-order/old SMS must never rewrite newer state.
+                            if (message.timestamp >= newestKnown) {
+                                reconcileAccountToSms(account!!.id, message)
+                            }
+                        }
+                        recordSmsImport(message, account!!.id, transactionId)
+                        if (accountCreatedNow) {
+                            accountsByName[accountKey] = accountDao.getById(account!!.id) ?: account!!
+                        }
+                        true
+                    }
+                }
+                wasImported.onSuccess { importedNow ->
+                    if (importedNow) imported++ else duplicates++
                 }
             }
         }
         return SmsImportResult(imported, duplicates)
     }
+
+    private suspend fun recordSmsImport(message: ParsedSms, accountId: String, transactionId: String) {
+        smsImportDao.insert(
+            SmsImportEntity(
+                fingerprint = message.fingerprint,
+                transactionId = transactionId,
+                importedAt = System.currentTimeMillis(),
+                messageDate = message.timestamp,
+                balanceAfterMinor = message.balanceAfterMinor,
+                accountId = accountId
+            )
+        )
+    }
+
+    /** Posts a clearly labeled adjustment so the ledger matches the bank SMS. */
+    private suspend fun reconcileAccountToSms(accountId: String, message: ParsedSms) {
+        val balance = accountDao.getById(accountId)?.balance ?: return
+        val adjustment = LedgerReconciliation.adjustmentFor(balance, message.balanceAfterMinor) ?: return
+        val reconciliation = TransactionEntity(
+            id = UUID.randomUUID().toString(),
+            amount = adjustment.amountMinor,
+            type = adjustment.type,
+            categoryId = null,
+            accountId = accountId,
+            timestamp = message.timestamp,
+            note = LedgerReconciliation.RECONCILIATION_NOTE
+        )
+        applyBalance(reconciliation, reverse = false)
+        transactionDao.insert(reconciliation)
+    }
+
+    /**
+     * One-time v3 repair: removes exact duplicate SMS rows, restores the
+     * opening-balance invariant, and reconciles accounts to the newest SMS that
+     * carried a balance. Returns false if anything failed so the flag is not set.
+     */
+    suspend fun repairLedgerV3(): Boolean = runCatching {
+        database.withTransaction {
+            val smsRows = transactionDao.smsTransactionsForRepair()
+            val groups = smsRows.groupBy {
+                listOf(it.accountId, it.amount, it.type.name, it.note)
+            }
+            for (rows in groups.values) {
+                var anchor: TransactionEntity? = null
+                for (row in rows.sortedWith(compareBy<TransactionEntity> { it.createdAt }.thenBy { it.id })) {
+                    if (anchor == null ||
+                        kotlin.math.abs(row.timestamp - anchor!!.timestamp) >
+                            LedgerReconciliation.DUPLICATE_WINDOW_MILLIS
+                    ) {
+                        anchor = row
+                    } else {
+                        transactionDao.delete(row)
+                        applyBalance(row, reverse = true)
+                    }
+                }
+            }
+
+            val allTransactions = transactionDao.getAll()
+            for (stored in accountDao.getAll()) {
+                val account = accountDao.getById(stored.id) ?: continue
+                val deltas = allTransactions.sumOf { transaction ->
+                    LedgerMath.deltas(
+                        type = transaction.type,
+                        amount = transaction.amount,
+                        accountId = transaction.accountId,
+                        targetAccountId = transaction.targetAccountId
+                    ).filter { it.accountId == account.id }.sumOf { it.delta }
+                }
+                if (account.openingBalanceMinor == 0L) {
+                    val opening = account.balance - deltas
+                    accountDao.update(
+                        account.copy(
+                            openingBalanceMinor = opening,
+                            balance = opening + deltas
+                        )
+                    )
+                }
+            }
+
+            for (account in accountDao.getAll()) {
+                val latest = smsImportDao.latestWithBalance(account.id) ?: continue
+                val balanceAfter = latest.balanceAfterMinor ?: continue
+                val current = accountDao.getById(account.id)?.balance ?: continue
+                val adjustment = LedgerReconciliation.adjustmentFor(current, balanceAfter) ?: continue
+                val reconciliation = TransactionEntity(
+                    id = UUID.randomUUID().toString(),
+                    amount = adjustment.amountMinor,
+                    type = adjustment.type,
+                    categoryId = null,
+                    accountId = account.id,
+                    timestamp = latest.messageDate.takeIf { it > 0L } ?: latest.importedAt,
+                    note = LedgerReconciliation.RECONCILIATION_NOTE
+                )
+                applyBalance(reconciliation, reverse = false)
+                transactionDao.insert(reconciliation)
+            }
+        }
+    }.isSuccess
 
     private suspend fun findOrCreateAccount(name: String, defaultAccountId: String): AccountEntity {
         val wanted = name.trim().ifBlank { "Imported" }

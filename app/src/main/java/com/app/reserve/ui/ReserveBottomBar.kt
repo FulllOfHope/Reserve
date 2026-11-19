@@ -1,16 +1,13 @@
 package com.app.reserve.ui
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Home
@@ -55,16 +52,15 @@ fun ReserveBottomBar(
 ) {
     val colors = LocalReserveColors.current
     Surface(
-        modifier = modifier
-            .padding(bottom = EnteSpacing.xl)
-            .wrapContentWidth()
-            .border(1.dp, colors.strokeFaint, RoundedCornerShape(EnteRadius.xl)),
-        shape = RoundedCornerShape(EnteRadius.xl),
+        modifier = modifier.fillMaxWidth(),
         color = colors.fillBase,
-        shadowElevation = 0.dp
+        shadowElevation = 0.dp,
+        tonalElevation = 0.dp
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = EnteSpacing.xl, vertical = EnteSpacing.md),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = EnteSpacing.lg, vertical = EnteSpacing.sm),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(EnteSpacing.md)
         ) {

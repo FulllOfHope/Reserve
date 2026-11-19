@@ -4,7 +4,9 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.provider.Telephony
+import androidx.glance.appwidget.updateAll
 import com.app.reserve.core.application.ReserveApplication
+import com.app.reserve.feature.widget.ReserveWidget
 import kotlinx.coroutines.launch
 
 /**
@@ -28,7 +30,10 @@ class SmsReceiver : BroadcastReceiver() {
         val pending = goAsync()
         application.container.scope.launch {
             try {
-                application.container.smsImporter.importLive(sender, body, timestamp)
+                val imported = application.container.smsImporter.importLive(sender, body, timestamp)
+                if (imported) {
+                    runCatching { ReserveWidget().updateAll(context.applicationContext) }
+                }
             } catch (_: Exception) {
                 // A bank SMS is never worth crashing the receiver over.
             } finally {

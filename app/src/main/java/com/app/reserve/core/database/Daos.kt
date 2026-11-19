@@ -36,6 +36,29 @@ interface TransactionDao {
 
     @Query("UPDATE transactions SET categoryId = :newCategoryId WHERE categoryId = :oldCategoryId")
     suspend fun reparentCategory(oldCategoryId: String, newCategoryId: String?)
+
+    /**
+     * Second-line duplicate guard for the same SMS arriving with two slightly
+     * different fingerprints (for example a multipart body reassembled twice).
+     */
+    @Query(
+        """SELECT * FROM transactions
+           WHERE accountId = :accountId AND amount = :amount AND type = :type
+             AND note = :note AND timestamp BETWEEN :from AND :to
+           ORDER BY createdAt ASC, id ASC LIMIT 1"""
+    )
+    suspend fun findDuplicateSmsTransaction(
+        accountId: String,
+        amount: Long,
+        type: TransactionType,
+        note: String,
+        from: Long,
+        to: Long
+    ): TransactionEntity?
+
+    /** SMS-sourced rows used by the one-time v3 ledger repair. */
+    @Query("SELECT * FROM transactions WHERE note LIKE 'SMS ·%' ORDER BY createdAt ASC, id ASC")
+    suspend fun smsTransactionsForRepair(): List<TransactionEntity>
 }
 
 @Dao
@@ -106,6 +129,21 @@ interface SmsImportDao {
 
     @Query("DELETE FROM sms_imports WHERE fingerprint = :fingerprint")
     suspend fun deleteByFingerprint(fingerprint: String)
+
+    @Query("SELECT * FROM sms_imports WHERE fingerprint = :fingerprint")
+    suspend fun getByFingerprint(fingerprint: String): SmsImportEntity?
+
+    /** Newest SMS date already posted to an account; used to reject replays. */
+    @Query("SELECT MAX(messageDate) FROM sms_imports WHERE accountId = :accountId")
+    suspend fun latestMessageDate(accountId: String): Long?
+
+    /** Latest import that carried a bank balance, for repair reconciliation. */
+    @Query(
+        """SELECT * FROM sms_imports
+           WHERE accountId = :accountId AND balanceAfterMinor IS NOT NULL
+           ORDER BY messageDate DESC, importedAt DESC LIMIT 1"""
+    )
+    suspend fun latestWithBalance(accountId: String): SmsImportEntity?
 
     @Query("SELECT COUNT(*) FROM sms_imports")
     suspend fun count(): Int

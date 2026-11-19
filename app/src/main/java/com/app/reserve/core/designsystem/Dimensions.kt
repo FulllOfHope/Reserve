@@ -6,7 +6,7 @@ object EnteRadius {
     val sm = 4.dp
     val md = 12.dp
     val lg = 16.dp
-    val xl = 20.dp
+    val xl = 24.dp
 }
 
 object EnteSpacing {

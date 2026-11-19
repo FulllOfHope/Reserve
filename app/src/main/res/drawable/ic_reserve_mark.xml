@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Transparent, theme-tintable Reserve mark. One path, one colour, inside the
+     66dp adaptive-icon safe zone (24..84 x 22..86 of the 108dp canvas). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#FFFFFF"
+        android:fillType="evenOdd"
+        android:pathData="M54,22 L84,32 V53 C84,69 72,80 54,86 C36,80 24,69 24,53 V32 L54,22 Z M54,38 L45,49 H51 V64 H57 V49 H63 Z" />
+</vector>

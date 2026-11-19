@@ -39,19 +39,28 @@ data class AccountEntity(
     val name: String,
     val balance: Long,
     val isArchived: Boolean = false,
-    val createdAt: Long = System.currentTimeMillis()
+    val createdAt: Long = System.currentTimeMillis(),
+    /** Opening capital before any recorded transaction; keeps balance derivable. */
+    val openingBalanceMinor: Long = 0L
 )
 
 /**
  * Remembers which SMS have already produced a ledger row. The fingerprint is a
- * SHA-256 of sender + timestamp + body, so the receiver and the inbox backfill
- * can overlap without ever importing the same message twice.
+ * SHA-256 of normalized sender + body + a one-minute timestamp bucket plus the
+ * parsed outcome, so the receiver and the inbox backfill can overlap without
+ * ever importing the same message twice.
  */
 @Entity(tableName = "sms_imports")
 data class SmsImportEntity(
     @PrimaryKey val fingerprint: String,
     val transactionId: String,
-    val importedAt: Long
+    val importedAt: Long,
+    /** Canonical SMS date used for ordering and reconciliation. */
+    val messageDate: Long = 0L,
+    /** Running balance from the SMS, when the bank printed one. */
+    val balanceAfterMinor: Long? = null,
+    /** Account the SMS was posted to. */
+    val accountId: String = ""
 )
 
 @Entity(tableName = "budgets")

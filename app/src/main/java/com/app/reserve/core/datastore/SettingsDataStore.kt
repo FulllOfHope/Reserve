@@ -22,11 +22,13 @@ data class ReserveSettings(
     val biometricLock: Boolean = false,
     val hideAmounts: Boolean = false,
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
-    val primaryColorHex: String = "#0FB70F",
+    val primaryColorHex: String = "#08C225",
     val appIconAlias: String = IconSwitcher.DEFAULT_ALIAS,
     val lastBackupAt: Long = 0L,
     val lastSmsScanAt: Long = 0L,
-    val smsImportedTotal: Int = 0
+    val smsImportedTotal: Int = 0,
+    /** One-time v3 ledger repair has completed successfully. */
+    val ledgerRepairedV3: Boolean = false
 )
 
 class SettingsDataStore(private val context: Context) {
@@ -40,6 +42,7 @@ class SettingsDataStore(private val context: Context) {
         val LAST_BACKUP_AT = longPreferencesKey("last_backup_at")
         val LAST_SMS_SCAN_AT = longPreferencesKey("last_sms_scan_at")
         val SMS_IMPORTED_TOTAL = intPreferencesKey("sms_imported_total")
+        val LEDGER_REPAIRED_V3 = booleanPreferencesKey("ledger_repaired_v3")
     }
 
     val settings: Flow<ReserveSettings> = context.reserveDataStore.data.map { preferences ->
@@ -49,11 +52,12 @@ class SettingsDataStore(private val context: Context) {
             themeMode = runCatching {
                 ThemeMode.valueOf(preferences[THEME_MODE] ?: ThemeMode.SYSTEM.name)
             }.getOrDefault(ThemeMode.SYSTEM),
-            primaryColorHex = preferences[PRIMARY_COLOR_HEX] ?: "#0FB70F",
+            primaryColorHex = preferences[PRIMARY_COLOR_HEX] ?: "#08C225",
             appIconAlias = preferences[APP_ICON_ALIAS] ?: IconSwitcher.DEFAULT_ALIAS,
             lastBackupAt = preferences[LAST_BACKUP_AT] ?: 0L,
             lastSmsScanAt = preferences[LAST_SMS_SCAN_AT] ?: 0L,
-            smsImportedTotal = preferences[SMS_IMPORTED_TOTAL] ?: 0
+            smsImportedTotal = preferences[SMS_IMPORTED_TOTAL] ?: 0,
+            ledgerRepairedV3 = preferences[LEDGER_REPAIRED_V3] ?: false
         )
     }
 
@@ -91,6 +95,10 @@ class SettingsDataStore(private val context: Context) {
         context.reserveDataStore.edit {
             it[SMS_IMPORTED_TOTAL] = (it[SMS_IMPORTED_TOTAL] ?: 0) + count
         }
+    }
+
+    suspend fun setLedgerRepairedV3(repaired: Boolean = true) {
+        context.reserveDataStore.edit { it[LEDGER_REPAIRED_V3] = repaired }
     }
 
     /** One-shot read used by the background scanner. */

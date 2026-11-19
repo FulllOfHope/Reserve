@@ -20,6 +20,14 @@ class ReserveApplication : Application() {
         container = AppContainer(this)
         container.scope.launch {
             container.repository.ensureSeeded()
+            // One-time v3 repair must finish before any new SMS is imported.
+            runCatching {
+                if (!container.settings.currentSettings().ledgerRepairedV3 &&
+                    container.repository.repairLedgerV3()
+                ) {
+                    container.settings.setLedgerRepairedV3()
+                }
+            }
             container.repository.generateDueRecurring()
             // Automatic backfill: the first run reads the whole inbox, later
             // runs only the recent overlap. No-op until SMS permission exists.

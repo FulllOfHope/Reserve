@@ -17,7 +17,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         RecurringEntity::class,
         SmsImportEntity::class
     ],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -46,6 +46,16 @@ abstract class ReserveDatabase : RoomDatabase() {
             }
         }
 
+        /** v3 stores balance/account context so SMS rows can be reconciled safely. */
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `accounts` ADD COLUMN `openingBalanceMinor` INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE `sms_imports` ADD COLUMN `messageDate` INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE `sms_imports` ADD COLUMN `balanceAfterMinor` INTEGER")
+                db.execSQL("ALTER TABLE `sms_imports` ADD COLUMN `accountId` TEXT NOT NULL DEFAULT ''")
+            }
+        }
+
         fun get(context: Context): ReserveDatabase =
             instance ?: synchronized(this) {
                 instance ?: Room.databaseBuilder(
@@ -53,7 +63,7 @@ abstract class ReserveDatabase : RoomDatabase() {
                     ReserveDatabase::class.java,
                     "reserve.db"
                 )
-                    .addMigrations(MIGRATION_1_2)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                     .fallbackToDestructiveMigration()
                     .openHelperFactory(net.zetetic.database.sqlcipher.SupportOpenHelperFactory(DbSecurity.getPassphrase(context)))
                     .build()

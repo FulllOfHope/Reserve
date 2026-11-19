@@ -127,16 +127,84 @@ class SmsImporter(
         outcome
     }
 
-    /** Used by the live receiver; the message is already in memory. */
+    /**
+     * Used by the live receiver. When READ_SMS is available we prefer the
+     * canonical row the provider eventually stored (multipart parts may differ
+     * from the in-memory concatenation). Both paths use the same parser and
+     * the same timestamp fallback, so their fingerprints stay identical.
+     */
     suspend fun importLive(sender: String?, body: String, timestamp: Long): Boolean =
         withContext(Dispatchers.IO) {
-            val parsed = SmsParser.parse(sender, body, timestamp) ?: return@withContext false
+            val normalizedTimestamp = timestamp.takeIf { it > 0L } ?: System.currentTimeMillis()
+            val canonical = if (canReadSms()) findInboxMatch(sender, body, normalizedTimestamp) else null
+            val parsed = if (canonical != null) {
+                SmsParser.parse(canonical.address, canonical.body, canonical.date)
+            } else {
+                SmsParser.parse(sender, body, normalizedTimestamp)
+            } ?: return@withContext false
+
             val result = repository.importSmsMessages(listOf(parsed))
             if (result.imported > 0) {
                 runCatching { settings.addSmsImported(result.imported) }
             }
             result.imported > 0
         }
+
+    private data class InboxRow(val address: String?, val body: String, val date: Long)
+
+    /** Looks for the provider row matching a just-delivered SMS, if permitted. */
+    private fun findInboxMatch(sender: String?, body: String, timestamp: Long): InboxRow? {
+        val expectedAddress = SmsParser.normalizeSenderKey(sender)
+        val expectedBody = SmsParser.normalizeBodyKey(body)
+        if (expectedBody.isEmpty()) return null
+
+        return runCatching {
+            val projection = arrayOf(
+                Telephony.Sms.ADDRESS,
+                Telephony.Sms.BODY,
+                Telephony.Sms.DATE
+            )
+            val selection = "${Telephony.Sms.DATE} BETWEEN ? AND ?"
+            val selectionArgs = arrayOf(
+                (timestamp - LIVE_INBOX_WINDOW_MILLIS).toString(),
+                (timestamp + LIVE_INBOX_WINDOW_MILLIS).toString()
+            )
+            val cursor = appContext.contentResolver.query(
+                Telephony.Sms.Inbox.CONTENT_URI,
+                projection,
+                selection,
+                selectionArgs,
+                "${Telephony.Sms.DATE} ASC"
+            ) ?: return@runCatching null
+
+            cursor.use { rows ->
+                val addressIndex = rows.getColumnIndexOrThrow(Telephony.Sms.ADDRESS)
+                val bodyIndex = rows.getColumnIndexOrThrow(Telephony.Sms.BODY)
+                val dateIndex = rows.getColumnIndexOrThrow(Telephony.Sms.DATE)
+                var best: InboxRow? = null
+                while (rows.moveToNext()) {
+                    val address = rows.getString(addressIndex)
+                    val rowBody = rows.getString(bodyIndex).orEmpty()
+                    val date = rows.getLong(dateIndex).takeIf { it > 0L }
+                        ?: System.currentTimeMillis()
+                    val rowBodyKey = SmsParser.normalizeBodyKey(rowBody)
+                    val addressMatches = expectedAddress.isEmpty() ||
+                        SmsParser.normalizeSenderKey(address) == expectedAddress
+                    val bodyMatches = rowBodyKey == expectedBody ||
+                        rowBodyKey.contains(expectedBody) ||
+                        expectedBody.contains(rowBodyKey)
+                    if (!addressMatches || !bodyMatches) continue
+                    val current = best
+                    if (current == null || kotlin.math.abs(date - timestamp) <
+                        kotlin.math.abs(current.date - timestamp)
+                    ) {
+                        best = InboxRow(address, rowBody, date)
+                    }
+                }
+                best
+            }
+        }.getOrNull()
+    }
 
     fun canReadSms(): Boolean =
         ContextCompat.checkSelfPermission(appContext, Manifest.permission.READ_SMS) ==
@@ -145,5 +213,6 @@ class SmsImporter(
     private companion object {
         const val BATCH_SIZE = 200
         const val OVERLAP_MILLIS = 3L * 24L * 60L * 60L * 1000L
+        const val LIVE_INBOX_WINDOW_MILLIS = 60_000L
     }
 }

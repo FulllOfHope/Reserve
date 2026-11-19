@@ -2,6 +2,7 @@ package com.app.reserve.core.domain
 
 import com.app.reserve.core.database.TransactionType
 import java.security.MessageDigest
+import java.util.Locale
 
 /**
  * A transactional SMS that has been understood well enough to become a ledger
@@ -9,10 +10,12 @@ import java.security.MessageDigest
  * or sent anywhere.
  */
 data class ParsedSms(
-    /** Stable hash of sender + timestamp + body, used to suppress duplicates. */
+    /** Stable content hash used to suppress duplicates across both ingest paths. */
     val fingerprint: String,
     val type: TransactionType,
     val amountMinor: Long,
+    /** The running balance printed in the SMS, in minor units, when present. */
+    val balanceAfterMinor: Long?,
     val accountName: String,
     val categoryName: String?,
     val timestamp: Long,
@@ -62,6 +65,14 @@ object SmsParser {
         """(?:avl\.?|available|bal(?:ance)?|limit|total)\s*[^0-9]{0,14}$""",
         RegexOption.IGNORE_CASE
     )
+
+    private val whitespaceRegex = Regex("""\s+""")
+
+    /** "582.18.Not" and "582.18. Not" are the same alert body. */
+    private val punctuationWhitespaceRegex = Regex("""\s*([.,;:!?])\s*""")
+
+    /** ~60s buckets make live and inbox copies of one SMS hash identically. */
+    const val FINGERPRINT_BUCKET_MILLIS = 60_000L
 
     private val last4Regexes = listOf(
         Regex("""(?:a/c|ac|account|acct|card)\s*(?:no\.?|number)?\s*[xX*.]*(\d{4})\b""", RegexOption.IGNORE_CASE),
@@ -128,7 +139,7 @@ object SmsParser {
         Regex("""\bidfc\s+(?:first\s+)?bank\b""", RegexOption.IGNORE_CASE) to "IDFC FIRST Bank",
         Regex("""\bpunjab\s+national\s+bank\b""", RegexOption.IGNORE_CASE) to "Punjab National Bank",
         Regex("""\bbank\s+of\s+baroda\b""", RegexOption.IGNORE_CASE) to "Bank of Baroda",
-        Regex("""\bcanara\s+bank\b""", RegexOption.IGNORE_CASE) to "Canara Bank",
+        Regex("""\bcanara\s*bank\b""", RegexOption.IGNORE_CASE) to "Canara Bank",
         Regex("""\bunion\s+bank\s+of\s+india\b""", RegexOption.IGNORE_CASE) to "Union Bank of India",
         Regex("""\bindusind\s+bank\b""", RegexOption.IGNORE_CASE) to "IndusInd Bank",
         Regex("""\bfederal\s+bank\b""", RegexOption.IGNORE_CASE) to "Federal Bank",
@@ -187,11 +198,13 @@ object SmsParser {
             append(bank ?: "Other Bank")
             if (last4 != null) append(" ••").append(last4)
         }
+        val balanceAfter = pickBalanceAfter(text)
 
         return ParsedSms(
-            fingerprint = fingerprint(sender, timestamp, text),
+            fingerprint = fingerprint(sender, timestamp, text, type, amount, accountName),
             type = type,
             amountMinor = amount,
+            balanceAfterMinor = balanceAfter,
             accountName = accountName,
             categoryName = categoryFor(text, type),
             timestamp = timestamp,
@@ -268,9 +281,53 @@ object SmsParser {
         TransactionType.TRANSFER -> null
     }
 
-    private fun fingerprint(sender: String?, timestamp: Long, body: String): String {
+    /**
+     * Extracts the running balance printed by the bank (for example
+     * "Bal INR 582.18"). The same label window used by [pickAmount] keeps this
+     * figure out of the transaction amount.
+     */
+    private fun pickBalanceAfter(text: String): Long? =
+        amountRegex.findAll(text).mapNotNull { match ->
+            val before = text.substring(maxOf(0, match.range.first - 32), match.range.first)
+            if (!balanceBeforeRegex.containsMatchIn(before)) return@mapNotNull null
+            Money.parse(match.groupValues[1])?.takeIf { it >= 0L }
+        }.lastOrNull()
+
+    /** Casefolded, whitespace-collapsed sender key shared by both ingest paths. */
+    fun normalizeSenderKey(sender: String?): String =
+        whitespaceRegex.replace(sender.orEmpty().replace('\u00A0', ' ').trim().lowercase(Locale.ROOT), " ")
+
+    /** Casefolded, whitespace-collapsed body key shared by both ingest paths. */
+    fun normalizeBodyKey(body: String): String {
+        val collapsed = whitespaceRegex.replace(body.replace('\u00A0', ' ').trim().lowercase(Locale.ROOT), " ")
+        return punctuationWhitespaceRegex.replace(collapsed) { it.groupValues[1] }
+    }
+
+    /**
+     * Stable across the live receiver and the inbox backfill: sender and body
+     * are normalized, the timestamp is bucketed to a minute, and the parsed
+     * outcome is part of the hash so two different SMS in the same minute on
+     * the same account cannot collide.
+     */
+    private fun fingerprint(
+        sender: String?,
+        timestamp: Long,
+        body: String,
+        type: TransactionType,
+        amountMinor: Long,
+        accountName: String
+    ): String {
+        val bucket = Math.floorDiv(timestamp, FINGERPRINT_BUCKET_MILLIS)
+        val material = listOf(
+            normalizeSenderKey(sender),
+            normalizeBodyKey(body),
+            bucket.toString(),
+            type.name,
+            amountMinor.toString(),
+            normalizeBodyKey(accountName)
+        ).joinToString(separator = "|")
         val digest = MessageDigest.getInstance("SHA-256")
-        val bytes = digest.digest("${sender.orEmpty()}|$timestamp|$body".toByteArray(Charsets.UTF_8))
+        val bytes = digest.digest(material.toByteArray(Charsets.UTF_8))
         return bytes.joinToString("") { "%02x".format(it) }
     }
 }
