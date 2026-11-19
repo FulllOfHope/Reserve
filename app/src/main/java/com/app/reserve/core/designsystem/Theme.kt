@@ -16,7 +16,7 @@ import androidx.core.view.WindowCompat
 @Composable
 fun ReserveTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
-    primaryColorHex: String = "#08C225",
+    primaryColorHex: String = "#0FB70F",
     amountsHidden: Boolean = false,
     content: @Composable () -> Unit
 ) {
@@ -48,9 +48,9 @@ fun ReserveTheme(
             onSecondary = colors.textReverse,
             background = colors.fillBase,
             onBackground = colors.textBase,
-            surface = colors.surface,
+            surface = colors.fillLight,
             onSurface = colors.textBase,
-            surfaceVariant = colors.fillLight,
+            surfaceVariant = colors.fillDark,
             onSurfaceVariant = colors.textLight,
             outline = colors.strokeFaint,
             outlineVariant = colors.strokeFaint,
@@ -67,9 +67,9 @@ fun ReserveTheme(
             onSecondary = Color.White,
             background = colors.fillBase,
             onBackground = colors.textBase,
-            surface = colors.surface,
+            surface = colors.fillLight,
             onSurface = colors.textBase,
-            surfaceVariant = colors.fillLight,
+            surfaceVariant = colors.fillDark,
             onSurfaceVariant = colors.textLight,
             outline = colors.strokeFaint,
             outlineVariant = colors.strokeFaint,

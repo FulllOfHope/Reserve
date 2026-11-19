@@ -4,24 +4,18 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 
 /**
- * Ente Colour Tokens for Light and Dark themes.
+ * Reserve's colour tokens based on Ente Design System.
  */
 data class ReserveColors(
     val isDark: Boolean,
-    /** Page background (#FAFAFA light / #161616 dark). */
     val fillBase: Color,
-    /** Raised surface (#FFFFFF / #212121). */
+    /** Raised surface used by feature bottom sheets (e.g. app updates). */
     val surface: Color,
-    /** Subtle fill (#FFFFFF / #212121). */
     val fillLight: Color,
-    /** Hairline stroke / container (#F5F5F5 / #2C2C2E). */
     val fillDark: Color,
-    /** Track / inactive fill (#EBEBEB / #1C1C1E). */
     val fillDarker: Color,
     val textBase: Color,
-    /** Secondary text (#666666 / #B3B3B3). */
     val textLight: Color,
-    /** Tertiary text (#8E8E93 / #7F7F7F). */
     val textLighter: Color,
     val textReverse: Color,
     val strokeFaint: Color,
@@ -31,33 +25,33 @@ data class ReserveColors(
 
 val ReserveLightColors = ReserveColors(
     isDark = false,
-    fillBase = Color(0xFFFAFAFA),
+    fillBase = Color(0xFFFFFFFF),       // Pure White
     surface = Color(0xFFFFFFFF),
-    fillLight = Color(0xFFFFFFFF),
-    fillDark = Color(0xFFF5F5F5),
-    fillDarker = Color(0xFFEBEBEB),
-    textBase = Color(0xFF1C1C1E),
-    textLight = Color(0xFF666666),
-    textLighter = Color(0xFF8E8E93),
+    fillLight = Color(0xFFF5F5F5),      // Light Grey
+    fillDark = Color(0xFFEDEDED),
+    fillDarker = Color(0xFFD4D4D8),
+    textBase = Color(0xFF1C1C1E),       // Heavy text
+    textLight = Color(0xFF8E8E93),      // Cap values / dates
+    textLighter = Color(0xFF8E8E93), 
     textReverse = Color(0xFFFFFFFF),
-    strokeFaint = Color(0xFFEBEBEB),
-    primaryDefault = Color(0xFF08C225),
-    warningDefault = Color(0xFFF63A3A)
+    strokeFaint = Color(0xFFEDEDED),    // Fine partition hairline
+    primaryDefault = Color(0xFF0FB70F),  // Vibrant Ente Green
+    warningDefault = Color(0xFFD03434)   // Critical Red
 )
 
 val ReserveDarkColors = ReserveColors(
     isDark = true,
-    fillBase = Color(0xFF161616),
+    fillBase = Color(0xFF000000),       // Pure Black
     surface = Color(0xFF212121),
-    fillLight = Color(0xFF212121),
-    fillDark = Color(0xFF2C2C2E),
-    fillDarker = Color(0xFF1C1C1E),
-    textBase = Color(0xFFFFFFFF),
-    textLight = Color(0xFFB3B3B3),
-    textLighter = Color(0xFF7F7F7F),
+    fillLight = Color(0xFF151515),      // Dark Surface
+    fillDark = Color(0xFF292929),
+    fillDarker = Color(0xFF3E3E3E),
+    textBase = Color(0xFFFFFFFF),       // Pure White
+    textLight = Color(0xFFA1A1AA),
+    textLighter = Color(0xFFA1A1AA),
     textReverse = Color(0xFF000000),
-    strokeFaint = Color(0xFF2A2A2A),
-    primaryDefault = Color(0xFF069D1E),
+    strokeFaint = Color(0xFF292929),
+    primaryDefault = Color(0xFF067018),  // Ente Green
     warningDefault = Color(0xFFDD3434)
 )
 

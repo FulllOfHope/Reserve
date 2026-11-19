@@ -41,7 +41,6 @@ import androidx.compose.ui.unit.dp
 import com.app.reserve.core.database.BudgetEntity
 import com.app.reserve.core.designsystem.BudgetBar
 import com.app.reserve.core.designsystem.EmptyState
-import com.app.reserve.core.designsystem.HeaderActionButton
 import com.app.reserve.core.designsystem.LocalAmountsHidden
 import com.app.reserve.core.designsystem.LocalReserveColors
 import com.app.reserve.core.designsystem.MoneyText
@@ -80,12 +79,9 @@ fun BudgetsScreen(
             title = "Budgets",
             onBack = onBack,
             trailing = {
-                HeaderActionButton(
-                    icon = Icons.Rounded.Add,
-                    contentDescription = "Add budget",
-                    onClick = { adding = true },
-                    tint = colors.primaryDefault
-                )
+                IconButton(onClick = { adding = true }) {
+                    Icon(Icons.Rounded.Add, contentDescription = "Add budget", tint = colors.primaryDefault)
+                }
             }
         )
         MonthSwitcher(

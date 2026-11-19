@@ -1,14 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="reserve_canvas">#161616</color>
-    <color name="reserve_surface">#212121</color>
-    <color name="reserve_subtle_fill">#0A0A0A</color>
-    <color name="reserve_stroke">#212121</color>
-    <color name="reserve_text_primary">#FFFFFFFF</color>
-    <color name="reserve_text_secondary">#B3B3B3</color>
-    <color name="reserve_text_tertiary">#7F7F7F</color>
-    <color name="reserve_primary">#069D1E</color>
-    <color name="reserve_danger">#DD3434</color>
-    <color name="reserve_canvas_dark">#161616</color>
-    <color name="reserve_icon_background">#212121</color>
+    <color name="reserve_canvas_dark">#121214</color>
 </resources>

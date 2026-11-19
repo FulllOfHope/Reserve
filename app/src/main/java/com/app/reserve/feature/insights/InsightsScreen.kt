@@ -76,7 +76,7 @@ fun InsightsScreen(
 
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 104.dp)
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 96.dp)
         ) {
             item {
                 Spacer(modifier = Modifier.height(8.dp))

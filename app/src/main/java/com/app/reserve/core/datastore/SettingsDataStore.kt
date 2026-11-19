@@ -22,7 +22,7 @@ data class ReserveSettings(
     val biometricLock: Boolean = false,
     val hideAmounts: Boolean = false,
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
-    val primaryColorHex: String = "#08C225",
+    val primaryColorHex: String = "#0FB70F",
     val appIconAlias: String = IconSwitcher.DEFAULT_ALIAS,
     val lastBackupAt: Long = 0L,
     val lastSmsScanAt: Long = 0L,
@@ -59,7 +59,7 @@ class SettingsDataStore(private val context: Context) {
             themeMode = runCatching {
                 ThemeMode.valueOf(preferences[THEME_MODE] ?: ThemeMode.SYSTEM.name)
             }.getOrDefault(ThemeMode.SYSTEM),
-            primaryColorHex = preferences[PRIMARY_COLOR_HEX] ?: "#08C225",
+            primaryColorHex = preferences[PRIMARY_COLOR_HEX] ?: "#0FB70F",
             appIconAlias = preferences[APP_ICON_ALIAS] ?: IconSwitcher.DEFAULT_ALIAS,
             lastBackupAt = preferences[LAST_BACKUP_AT] ?: 0L,
             lastSmsScanAt = preferences[LAST_SMS_SCAN_AT] ?: 0L,

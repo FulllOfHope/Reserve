@@ -43,7 +43,6 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.app.reserve.core.database.AccountEntity
 import com.app.reserve.core.designsystem.EmptyState
-import com.app.reserve.core.designsystem.HeaderActionButton
 import com.app.reserve.core.designsystem.LocalReserveColors
 import com.app.reserve.core.designsystem.MoneyText
 import com.app.reserve.core.designsystem.ReserveCard
@@ -76,12 +75,9 @@ fun AccountsScreen(
             title = "Accounts",
             onBack = onBack,
             trailing = {
-                HeaderActionButton(
-                    icon = Icons.Rounded.Add,
-                    contentDescription = "Add account",
-                    onClick = { adding = true },
-                    tint = colors.primaryDefault
-                )
+                IconButton(onClick = { adding = true }) {
+                    Icon(Icons.Rounded.Add, contentDescription = "Add account", tint = colors.primaryDefault)
+                }
             }
         )
 
