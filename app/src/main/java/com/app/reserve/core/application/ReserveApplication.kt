@@ -1,9 +1,13 @@
 package com.app.reserve.core.application
 
 import android.app.Application
+import android.content.Context
 import com.app.reserve.core.data.ReserveRepository
 import com.app.reserve.core.database.ReserveDatabase
 import com.app.reserve.core.datastore.SettingsDataStore
+import com.app.reserve.core.update.GitHubUpdateChecker
+import com.app.reserve.core.update.UpdateNotifier
+import com.app.reserve.core.update.UpdateRepository
 import com.app.reserve.feature.sms.SmsImporter
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -33,6 +37,11 @@ class ReserveApplication : Application() {
             // runs only the recent overlap. No-op until SMS permission exists.
             runCatching { container.smsImporter.scanInbox() }
         }
+        // One quiet, time-gated GitHub check per app start. The repository does
+        // the request on IO and decides whether a notification is warranted.
+        container.scope.launch {
+            runCatching { container.updateRepository.checkOnAppStart() }
+        }
     }
 }
 
@@ -46,4 +55,13 @@ class AppContainer(application: Application) {
     val repository = ReserveRepository(database)
     val settings = SettingsDataStore(application)
     val smsImporter = SmsImporter(application, repository, settings)
+    val updateChecker = GitHubUpdateChecker(currentVersion = installedVersion(application))
+    val updateNotifier = UpdateNotifier(application)
+    val updateRepository = UpdateRepository(settings, updateChecker, updateNotifier)
 }
+
+private fun installedVersion(context: Context): String =
+    runCatching {
+        @Suppress("DEPRECATION")
+        context.packageManager.getPackageInfo(context.packageName, 0).versionName
+    }.getOrNull()?.takeIf { it.isNotBlank() } ?: "0.0.0"

@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.app.reserve.core.datastore.ReserveSettings
 import com.app.reserve.core.datastore.SettingsDataStore
 import com.app.reserve.core.datastore.ThemeMode
+import com.app.reserve.core.update.UpdateRepository
 import com.app.reserve.feature.sms.SmsImporter
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -15,7 +16,8 @@ import kotlinx.coroutines.launch
 
 class SettingsViewModel(
     private val settingsDataStore: SettingsDataStore,
-    private val smsImporter: SmsImporter? = null
+    private val smsImporter: SmsImporter? = null,
+    private val updateRepository: UpdateRepository? = null
 ) : ViewModel() {
 
     /** Null until DataStore has produced its first value, so the lock is not skipped. */
@@ -30,6 +32,12 @@ class SettingsViewModel(
 
     private val _smsScanMessage = MutableStateFlow<String?>(null)
     val smsScanMessage: StateFlow<String?> = _smsScanMessage.asStateFlow()
+
+    private val _updateChecking = MutableStateFlow(false)
+    val updateChecking: StateFlow<Boolean> = _updateChecking.asStateFlow()
+
+    private val _updateCheckMessage = MutableStateFlow<String?>(null)
+    val updateCheckMessage: StateFlow<String?> = _updateCheckMessage.asStateFlow()
 
     fun setBiometricLock(enabled: Boolean) {
         viewModelScope.launch { settingsDataStore.setBiometricLock(enabled) }
@@ -57,6 +65,30 @@ class SettingsViewModel(
 
     fun markBackupNow() {
         viewModelScope.launch { settingsDataStore.setLastBackupAt(System.currentTimeMillis()) }
+    }
+
+    fun setUpdateChecksEnabled(enabled: Boolean) {
+        viewModelScope.launch { updateRepository?.setUpdateChecksEnabled(enabled) }
+    }
+
+    /** Manual check: ignores the 6-hour gate so the button always does something. */
+    fun checkForUpdatesNow() {
+        val repository = updateRepository ?: return
+        if (_updateChecking.value || repository.checking.value) return
+        viewModelScope.launch {
+            _updateChecking.value = true
+            _updateCheckMessage.value = null
+            val found = repository.checkNow()
+            _updateChecking.value = false
+            _updateCheckMessage.value = when {
+                found != null -> "Version ${found.versionName} is available."
+                else -> "You're up to date."
+            }
+        }
+    }
+
+    fun clearUpdateCheckMessage() {
+        _updateCheckMessage.value = null
     }
 
     /**

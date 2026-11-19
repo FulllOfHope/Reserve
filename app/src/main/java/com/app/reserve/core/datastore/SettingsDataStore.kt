@@ -28,7 +28,11 @@ data class ReserveSettings(
     val lastSmsScanAt: Long = 0L,
     val smsImportedTotal: Int = 0,
     /** One-time v3 ledger repair has completed successfully. */
-    val ledgerRepairedV3: Boolean = false
+    val ledgerRepairedV3: Boolean = false,
+    /** Privacy-first GitHub Releases check for new app versions. */
+    val updateChecksEnabled: Boolean = true,
+    val lastUpdateCheckAt: Long = 0L,
+    val dismissedUpdateVersion: String = ""
 )
 
 class SettingsDataStore(private val context: Context) {
@@ -43,6 +47,9 @@ class SettingsDataStore(private val context: Context) {
         val LAST_SMS_SCAN_AT = longPreferencesKey("last_sms_scan_at")
         val SMS_IMPORTED_TOTAL = intPreferencesKey("sms_imported_total")
         val LEDGER_REPAIRED_V3 = booleanPreferencesKey("ledger_repaired_v3")
+        val UPDATE_CHECKS_ENABLED = booleanPreferencesKey("update_checks_enabled")
+        val LAST_UPDATE_CHECK_AT = longPreferencesKey("last_update_check_at")
+        val DISMISSED_UPDATE_VERSION = stringPreferencesKey("dismissed_update_version")
     }
 
     val settings: Flow<ReserveSettings> = context.reserveDataStore.data.map { preferences ->
@@ -57,7 +64,10 @@ class SettingsDataStore(private val context: Context) {
             lastBackupAt = preferences[LAST_BACKUP_AT] ?: 0L,
             lastSmsScanAt = preferences[LAST_SMS_SCAN_AT] ?: 0L,
             smsImportedTotal = preferences[SMS_IMPORTED_TOTAL] ?: 0,
-            ledgerRepairedV3 = preferences[LEDGER_REPAIRED_V3] ?: false
+            ledgerRepairedV3 = preferences[LEDGER_REPAIRED_V3] ?: false,
+            updateChecksEnabled = preferences[UPDATE_CHECKS_ENABLED] ?: true,
+            lastUpdateCheckAt = preferences[LAST_UPDATE_CHECK_AT] ?: 0L,
+            dismissedUpdateVersion = preferences[DISMISSED_UPDATE_VERSION] ?: ""
         )
     }
 
@@ -99,6 +109,18 @@ class SettingsDataStore(private val context: Context) {
 
     suspend fun setLedgerRepairedV3(repaired: Boolean = true) {
         context.reserveDataStore.edit { it[LEDGER_REPAIRED_V3] = repaired }
+    }
+
+    suspend fun setUpdateChecksEnabled(enabled: Boolean) {
+        context.reserveDataStore.edit { it[UPDATE_CHECKS_ENABLED] = enabled }
+    }
+
+    suspend fun setLastUpdateCheckAt(timestamp: Long) {
+        context.reserveDataStore.edit { it[LAST_UPDATE_CHECK_AT] = timestamp }
+    }
+
+    suspend fun setDismissedUpdateVersion(version: String) {
+        context.reserveDataStore.edit { it[DISMISSED_UPDATE_VERSION] = version }
     }
 
     /** One-shot read used by the background scanner. */

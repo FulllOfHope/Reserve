@@ -1,5 +1,6 @@
 package com.app.reserve
 
+import android.content.Intent
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -67,6 +68,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.net.toUri
 import androidx.glance.appwidget.updateAll
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -99,6 +101,7 @@ import com.app.reserve.feature.manage.RecurringScreen
 import com.app.reserve.feature.settings.SettingsScreen
 import com.app.reserve.feature.settings.SettingsViewModel
 import com.app.reserve.feature.transactions.TransactionsScreen
+import com.app.reserve.feature.update.UpdateSheet
 import com.app.reserve.feature.widget.ReserveWidget
 import com.app.reserve.ui.AppLockScreen
 import com.app.reserve.ui.AppLockViewModel
@@ -112,10 +115,14 @@ import kotlinx.coroutines.withContext
 @Composable
 fun ReserveApp(
     initialOpenAddSheet: Boolean = false,
-    onOpenAddSheetConsumed: () -> Unit = {}
+    onOpenAddSheetConsumed: () -> Unit = {},
+    initialOpenUpdateSheet: Boolean = false,
+    onOpenUpdateSheetConsumed: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val application = context.applicationContext as ReserveApplication
+    val updateRepository = application.container.updateRepository
+    val appScope = rememberCoroutineScope()
 
     val ledgerViewModel: LedgerViewModel = viewModel(
         factory = viewModelFactory {
@@ -127,7 +134,8 @@ fun ReserveApp(
             initializer {
                 SettingsViewModel(
                     settingsDataStore = application.container.settings,
-                    smsImporter = application.container.smsImporter
+                    smsImporter = application.container.smsImporter,
+                    updateRepository = updateRepository
                 )
             }
         }
@@ -135,6 +143,20 @@ fun ReserveApp(
 
     val state by ledgerViewModel.state.collectAsStateWithLifecycle()
     val settings by settingsViewModel.settings.collectAsStateWithLifecycle()
+    val updateChecking by settingsViewModel.updateChecking.collectAsStateWithLifecycle()
+    val updateCheckMessage by settingsViewModel.updateCheckMessage.collectAsStateWithLifecycle()
+    val availableUpdate by updateRepository.availableUpdate.collectAsStateWithLifecycle()
+
+    var showUpdateSheet by rememberSaveable { mutableStateOf(initialOpenUpdateSheet) }
+    LaunchedEffect(initialOpenUpdateSheet) {
+        if (!initialOpenUpdateSheet) return@LaunchedEffect
+        showUpdateSheet = true
+        // A cold start may not have a cached release yet; refresh silently.
+        if (availableUpdate == null) updateRepository.refreshForSheet()
+    }
+    LaunchedEffect(availableUpdate) {
+        if (availableUpdate != null) showUpdateSheet = true
+    }
 
     val darkTheme = when (settings?.themeMode ?: ThemeMode.SYSTEM) {
         ThemeMode.SYSTEM -> isSystemInDarkTheme()
@@ -203,7 +225,36 @@ fun ReserveApp(
                 ledgerViewModel = ledgerViewModel,
                 settingsViewModel = settingsViewModel,
                 initialOpenAddSheet = initialOpenAddSheet,
-                onOpenAddSheetConsumed = onOpenAddSheetConsumed
+                onOpenAddSheetConsumed = onOpenAddSheetConsumed,
+                updateChecking = updateChecking,
+                updateCheckMessage = updateCheckMessage
+            )
+        }
+
+        // Deliberately outside the lock branch: a notification tap should show
+        // the update details immediately, and they contain no private data.
+        val update = availableUpdate
+        if (showUpdateSheet && update != null) {
+            UpdateSheet(
+                update = update,
+                onDownload = {
+                    showUpdateSheet = false
+                    onOpenUpdateSheetConsumed()
+                    val intent = Intent(Intent.ACTION_VIEW, update.apkUrl.toUri()).apply {
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                    runCatching { context.startActivity(intent) }
+                },
+                onLater = {
+                    showUpdateSheet = false
+                    onOpenUpdateSheetConsumed()
+                    appScope.launch { updateRepository.dismiss() }
+                },
+                onSkipVersion = {
+                    showUpdateSheet = false
+                    onOpenUpdateSheetConsumed()
+                    appScope.launch { updateRepository.skipVersion() }
+                }
             )
         }
     }
@@ -215,7 +266,9 @@ private fun MainNavigation(
     ledgerViewModel: LedgerViewModel,
     settingsViewModel: SettingsViewModel,
     initialOpenAddSheet: Boolean = false,
-    onOpenAddSheetConsumed: () -> Unit = {}
+    onOpenAddSheetConsumed: () -> Unit = {},
+    updateChecking: Boolean = false,
+    updateCheckMessage: String? = null
 ) {
     val colors = LocalReserveColors.current
     val context = LocalContext.current
@@ -655,7 +708,12 @@ private fun MainNavigation(
                                         onBackupCreated = { settingsViewModel.markBackupNow() },
                                         smsScanning = settingsViewModel.smsScanning.collectAsStateWithLifecycle().value,
                                         smsScanMessage = settingsViewModel.smsScanMessage.collectAsStateWithLifecycle().value,
-                                        onScanSms = onScanSms
+                                        onScanSms = onScanSms,
+                                        updateChecking = updateChecking,
+                                        updateCheckMessage = updateCheckMessage,
+                                        onToggleUpdateChecks = settingsViewModel::setUpdateChecksEnabled,
+                                        onCheckForUpdates = settingsViewModel::checkForUpdatesNow,
+                                        onDismissUpdateCheckMessage = settingsViewModel::clearUpdateCheckMessage
                                     )
                                 }
                             }
@@ -700,7 +758,12 @@ private fun MainNavigation(
                             onBackupCreated = { settingsViewModel.markBackupNow() },
                             smsScanning = settingsViewModel.smsScanning.collectAsStateWithLifecycle().value,
                             smsScanMessage = settingsViewModel.smsScanMessage.collectAsStateWithLifecycle().value,
-                            onScanSms = onScanSms
+                            onScanSms = onScanSms,
+                            updateChecking = updateChecking,
+                            updateCheckMessage = updateCheckMessage,
+                            onToggleUpdateChecks = settingsViewModel::setUpdateChecksEnabled,
+                            onCheckForUpdates = settingsViewModel::checkForUpdatesNow,
+                            onDismissUpdateCheckMessage = settingsViewModel::clearUpdateCheckMessage
                         )
                     }
                     composable(

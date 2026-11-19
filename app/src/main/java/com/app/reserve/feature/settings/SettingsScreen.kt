@@ -40,6 +40,7 @@ import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.PieChart
 import androidx.compose.material.icons.rounded.Restore
 import androidx.compose.material.icons.rounded.Sms
+import androidx.compose.material.icons.rounded.SystemUpdate
 import androidx.compose.material.icons.rounded.VisibilityOff
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -116,7 +117,12 @@ fun SettingsScreen(
     onBackupCreated: () -> Unit,
     smsScanning: Boolean = false,
     smsScanMessage: String? = null,
-    onScanSms: () -> Unit = {}
+    onScanSms: () -> Unit = {},
+    updateChecking: Boolean = false,
+    updateCheckMessage: String? = null,
+    onToggleUpdateChecks: (Boolean) -> Unit = {},
+    onCheckForUpdates: () -> Unit = {},
+    onDismissUpdateCheckMessage: () -> Unit = {}
 ) {
     val colors = LocalReserveColors.current
     val context = LocalContext.current
@@ -511,6 +517,93 @@ fun SettingsScreen(
                             )
                         )
                     }
+                }
+            }
+
+            // App updates block
+            item {
+                SettingsSectionHeader(text = "APP UPDATES")
+                ReserveCard(modifier = Modifier.padding(horizontal = spacing_xxl)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.SystemUpdate,
+                            contentDescription = null,
+                            tint = colors.primaryDefault,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.size(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Automatic update checks",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = colors.textBase
+                            )
+                            Text(
+                                text = "A quiet check for new versions, about every six hours.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = colors.textLight
+                            )
+                        }
+                        Switch(
+                            checked = settings?.updateChecksEnabled != false,
+                            onCheckedChange = onToggleUpdateChecks,
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = colors.textReverse,
+                                checkedTrackColor = colors.primaryDefault,
+                                uncheckedThumbColor = colors.textLighter,
+                                uncheckedTrackColor = colors.fillDark,
+                                uncheckedBorderColor = colors.strokeFaint
+                            )
+                        )
+                    }
+
+                    ReserveDivider(modifier = Modifier.padding(vertical = spacing_lg))
+
+                    val lastCheck = settings?.lastUpdateCheckAt ?: 0L
+                    Text(
+                        text = if (lastCheck == 0L) {
+                            "Not checked yet"
+                        } else {
+                            "Last checked ${Dates.fullDate(lastCheck)}"
+                        },
+                        style = MaterialTheme.typography.labelSmall,
+                        color = colors.textLighter
+                    )
+                    Spacer(modifier = Modifier.height(spacing_md))
+                    Button(
+                        onClick = {
+                            onDismissUpdateCheckMessage()
+                            onCheckForUpdates()
+                        },
+                        enabled = !updateChecking,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(radius_md),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = colors.primaryDefault,
+                            contentColor = colors.textReverse,
+                            disabledContainerColor = colors.fillDark,
+                            disabledContentColor = colors.textLight
+                        )
+                    ) {
+                        Text(if (updateChecking) "Checking…" else "Check for updates")
+                    }
+                    if (updateCheckMessage != null) {
+                        Spacer(modifier = Modifier.height(spacing_xs))
+                        Text(
+                            text = updateCheckMessage,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = colors.textLight
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(spacing_sm))
+                    Text(
+                        text = "Checked with GitHub. No analytics or tracking.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = colors.textLighter
+                    )
                 }
             }
 
