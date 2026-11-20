@@ -137,7 +137,8 @@ fun AddTransactionScreen(
         timestamp = Dates.toTimestamp(date),
         note = note.trim(),
         isRecurring = existing?.isRecurring ?: false,
-        createdAt = existing?.createdAt ?: System.currentTimeMillis()
+        createdAt = existing?.createdAt ?: System.currentTimeMillis(),
+        deletedAt = existing?.deletedAt
     )
 
     val haptic = LocalHapticFeedback.current

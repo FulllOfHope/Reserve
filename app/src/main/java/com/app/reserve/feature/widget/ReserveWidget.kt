@@ -64,21 +64,21 @@ private data class WidgetPalette(
 )
 
 private val LightPalette = WidgetPalette(
-    base = Color(0xFFFFFFFF),
-    surface = Color(0xFFF5F5F5),
-    textBase = Color(0xFF1C1C1E),
-    textLight = Color(0xFF8E8E93),
-    stroke = Color(0xFFEDEDED),
-    primary = Color(0xFF0FB70F)
+    base = Color(0xFFFAF9F6),
+    surface = Color(0xFFFFFFFF),
+    textBase = Color(0xFF18181A),
+    textLight = Color(0xFF636366),
+    stroke = Color(0xFFE8E6E0),
+    primary = Color(0xFFC98A00)
 )
 
 private val DarkPalette = WidgetPalette(
-    base = Color(0xFF000000),
-    surface = Color(0xFF151515),
-    textBase = Color(0xFFFFFFFF),
-    textLight = Color(0xFFA1A1AA),
-    stroke = Color(0xFF292929),
-    primary = Color(0xFF067018)
+    base = Color(0xFF141413),
+    surface = Color(0xFF1E1E1C),
+    textBase = Color(0xFFF5F5F3),
+    textLight = Color(0xFFA8A8A4),
+    stroke = Color(0xFF2C2C29),
+    primary = Color(0xFFF5B82E)
 )
 
 class ReserveWidget : GlanceAppWidget() {

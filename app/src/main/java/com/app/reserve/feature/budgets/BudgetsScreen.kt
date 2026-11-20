@@ -92,7 +92,7 @@ fun BudgetsScreen(
 
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 24.dp, top = 8.dp)
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 108.dp, top = 8.dp)
         ) {
             item {
                 ReserveCard(modifier = Modifier.padding(horizontal = 16.dp)) {

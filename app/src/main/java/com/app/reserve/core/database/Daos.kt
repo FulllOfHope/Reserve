@@ -10,14 +10,45 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface TransactionDao {
-    @Query("SELECT * FROM transactions ORDER BY timestamp DESC, createdAt DESC")
+    /** Active rows only — every ledger reader goes through this. */
+    @Query("SELECT * FROM transactions WHERE deletedAt IS NULL ORDER BY timestamp DESC, createdAt DESC")
     fun observeAll(): Flow<List<TransactionEntity>>
 
-    @Query("SELECT * FROM transactions ORDER BY timestamp DESC, createdAt DESC")
+    /** Active rows only. */
+    @Query("SELECT * FROM transactions WHERE deletedAt IS NULL ORDER BY timestamp DESC, createdAt DESC")
     suspend fun getAll(): List<TransactionEntity>
 
-    @Query("SELECT * FROM transactions WHERE id = :id")
+    @Query("SELECT * FROM transactions WHERE id = :id AND deletedAt IS NULL")
     suspend fun getById(id: String): TransactionEntity?
+
+    /** Includes trashed rows so state transitions can stay idempotent. */
+    @Query("SELECT * FROM transactions WHERE id = :id")
+    suspend fun getByIdIncludingDeleted(id: String): TransactionEntity?
+
+    /** Backups and restore must preserve tombstones. */
+    @Query("SELECT * FROM transactions ORDER BY timestamp DESC, createdAt DESC")
+    suspend fun getAllIncludingDeleted(): List<TransactionEntity>
+
+    @Query("SELECT * FROM transactions WHERE deletedAt IS NOT NULL ORDER BY deletedAt DESC")
+    fun observeTrashed(): Flow<List<TransactionEntity>>
+
+    @Query("SELECT * FROM transactions WHERE deletedAt IS NOT NULL ORDER BY deletedAt DESC")
+    suspend fun getTrashedTransactions(): List<TransactionEntity>
+
+    @Query("UPDATE transactions SET deletedAt = :deletedAt WHERE id = :id")
+    suspend fun softDeleteTransaction(id: String, deletedAt: Long)
+
+    @Query("UPDATE transactions SET deletedAt = NULL WHERE id = :id")
+    suspend fun restoreTransaction(id: String)
+
+    @Query("DELETE FROM transactions WHERE id = :id")
+    suspend fun permanentlyDeleteTransaction(id: String)
+
+    @Query("DELETE FROM transactions WHERE deletedAt IS NOT NULL")
+    suspend fun emptyTrash()
+
+    @Query("DELETE FROM transactions WHERE deletedAt IS NOT NULL AND deletedAt < :cutoffTimestamp")
+    suspend fun purgeExpiredTrash(cutoffTimestamp: Long)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(transaction: TransactionEntity)
@@ -43,7 +74,8 @@ interface TransactionDao {
      */
     @Query(
         """SELECT * FROM transactions
-           WHERE accountId = :accountId AND amount = :amount AND type = :type
+           WHERE deletedAt IS NULL
+             AND accountId = :accountId AND amount = :amount AND type = :type
              AND note = :note AND timestamp BETWEEN :from AND :to
            ORDER BY createdAt ASC, id ASC LIMIT 1"""
     )
@@ -57,7 +89,7 @@ interface TransactionDao {
     ): TransactionEntity?
 
     /** SMS-sourced rows used by the one-time v3 ledger repair. */
-    @Query("SELECT * FROM transactions WHERE note LIKE 'SMS ·%' ORDER BY createdAt ASC, id ASC")
+    @Query("SELECT * FROM transactions WHERE deletedAt IS NULL AND note LIKE 'SMS ·%' ORDER BY createdAt ASC, id ASC")
     suspend fun smsTransactionsForRepair(): List<TransactionEntity>
 }
 

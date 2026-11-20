@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.wrapContentWidth
@@ -56,25 +57,26 @@ fun ReserveBottomBar(
     val colors = LocalReserveColors.current
     Surface(
         modifier = modifier
-            .padding(bottom = EnteSpacing.xl)
-            .wrapContentWidth()
-            .border(1.dp, colors.strokeFaint, RoundedCornerShape(EnteRadius.xl)),
-        shape = RoundedCornerShape(EnteRadius.xl),
-        color = colors.fillBase,
-        shadowElevation = 0.dp
+            .navigationBarsPadding()
+            .padding(horizontal = 32.dp, vertical = 14.dp)
+            .wrapContentWidth(),
+        shape = RoundedCornerShape(24.dp),
+        color = colors.surface,
+        border = androidx.compose.foundation.BorderStroke(1.dp, colors.strokeFaint),
+        shadowElevation = 0.dp,
+        tonalElevation = 0.dp
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = EnteSpacing.xl, vertical = EnteSpacing.md),
+            modifier = Modifier.padding(horizontal = EnteSpacing.sm, vertical = EnteSpacing.sm),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(EnteSpacing.md)
+            horizontalArrangement = Arrangement.spacedBy(EnteSpacing.xs)
         ) {
             BottomDestination.entries.forEachIndexed { index, destination ->
                 val selected = selectedIndex == index
-                val itemShape = RoundedCornerShape(EnteRadius.lg)
                 Box(
                     modifier = Modifier
-                        .size(48.dp)
-                        .clip(itemShape)
+                        .size(44.dp)
+                        .clip(RoundedCornerShape(14.dp))
                         .background(if (selected) colors.fillLight else Color.Transparent)
                         .clickable { onSelectIndex(index) },
                     contentAlignment = Alignment.Center
@@ -83,7 +85,7 @@ fun ReserveBottomBar(
                         imageVector = if (selected) destination.selectedIcon else destination.icon,
                         contentDescription = destination.label,
                         tint = if (selected) colors.textBase else colors.textLight,
-                        modifier = Modifier.size(24.dp)
+                        modifier = Modifier.size(22.dp)
                     )
                 }
             }

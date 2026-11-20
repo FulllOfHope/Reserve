@@ -62,9 +62,35 @@ class BackupManagerTest {
     @Test
     fun `newer backup versions are rejected`() {
         val text = BackupManager.encode(snapshot)
-            .replace("\"version\": 1", "\"version\": 99")
+            .replace("\"version\": 2", "\"version\": 99")
         val result = BackupManager.decode(text)
         assertTrue(result.isFailure)
+    }
+
+    @Test
+    fun `trash tombstones survive a backup round-trip`() {
+        val withTrash = snapshot.copy(
+            transactions = snapshot.transactions + snapshot.transactions.first().copy(
+                id = "t2", deletedAt = 9_999L
+            )
+        )
+        val decoded = BackupManager.decode(BackupManager.encode(withTrash)).getOrThrow()
+        assertEquals(null, decoded.transactions.first { it.id == "t1" }.deletedAt)
+        assertEquals(9_999L, decoded.transactions.first { it.id == "t2" }.deletedAt)
+    }
+
+    @Test
+    fun `legacy v1 backup without deletedAt still decodes`() {
+        val legacy = """
+            {"version": 1, "exportedAt": 0,
+             "accounts": [{"id":"cash","name":"Cash","balance":100,"createdAt":0}],
+             "categories": [{"id":"food","name":"Food","colorHex":"#000000","iconName":"food","type":"EXPENSE"}],
+             "transactions": [{"id":"t1","amount":50,"type":"EXPENSE","accountId":"cash","timestamp":1,"createdAt":0}],
+             "budgets": [], "recurring": []}
+        """.trimIndent()
+        val decoded = BackupManager.decode(legacy).getOrThrow()
+        assertEquals(null, decoded.transactions.first().deletedAt)
+        assertEquals(50L, decoded.transactions.first().amount)
     }
 
     @Test

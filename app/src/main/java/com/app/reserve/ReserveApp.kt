@@ -6,8 +6,10 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.biometric.BiometricManager
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,16 +19,19 @@ import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AccountBalance
 import androidx.compose.material.icons.outlined.Backup
 import androidx.compose.material.icons.outlined.Category
+import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.FileDownload
 import androidx.compose.material.icons.outlined.FileUpload
 import androidx.compose.material.icons.outlined.PieChart
@@ -47,7 +52,10 @@ import androidx.compose.material3.ScaffoldDefaults
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -87,6 +95,7 @@ import com.app.reserve.core.database.TransactionType
 import com.app.reserve.core.designsystem.LocalReserveColors
 import com.app.reserve.core.designsystem.ReserveTheme
 import com.app.reserve.core.designsystem.spacing_lg
+import com.app.reserve.core.designsystem.spacing_md
 import com.app.reserve.core.designsystem.spacing_xxl
 import com.app.reserve.core.datastore.ThemeMode
 import com.app.reserve.feature.add.AddTransactionScreen
@@ -99,6 +108,7 @@ import com.app.reserve.feature.manage.CategoriesScreen
 import com.app.reserve.feature.manage.RecurringScreen
 import com.app.reserve.feature.settings.SettingsScreen
 import com.app.reserve.feature.settings.SettingsViewModel
+import com.app.reserve.feature.trash.TrashScreen
 import com.app.reserve.feature.transactions.TransactionsScreen
 import com.app.reserve.feature.update.UpdateSheet
 import com.app.reserve.feature.widget.ReserveWidget
@@ -165,7 +175,7 @@ fun ReserveApp(
 
     ReserveTheme(
         darkTheme = darkTheme,
-        primaryColorHex = settings?.primaryColorHex ?: "#0FB70F",
+        primaryColorHex = settings?.primaryColorHex ?: "#C98A00",
         amountsHidden = settings?.hideAmounts == true
     ) {
         val colors = LocalReserveColors.current
@@ -433,12 +443,18 @@ private fun MainNavigation(
     }
 
     val onDelete: (TransactionEntity) -> Unit = { transaction ->
-        ledgerViewModel.commitDelete(transaction)
+        // Soft-delete first: the row leaves the ledger and its balance reverses
+        // immediately, but a Undo tap can still bring it back exactly as it was.
+        ledgerViewModel.requestDelete(transaction)
         scope.launch {
-            snackbarHostState.showSnackbar(
-                message = "Transaction deleted",
-                duration = SnackbarDuration.Short
+            val result = snackbarHostState.showSnackbar(
+                message = "Transaction moved to Trash",
+                actionLabel = "Undo",
+                duration = SnackbarDuration.Long
             )
+            if (result == SnackbarResult.ActionPerformed) {
+                ledgerViewModel.undoDelete(transaction)
+            }
         }
     }
 
@@ -448,162 +464,192 @@ private fun MainNavigation(
     }
 
     val drawerState = rememberDrawerState(initialValue = androidx.compose.material3.DrawerValue.Closed)
-    val isHomeActive = currentRoute == Routes.Home && pagerState.currentPage == 0
+
+    @Composable
+    fun DrawerItem(
+        label: String,
+        icon: androidx.compose.ui.graphics.vector.ImageVector,
+        badgeCount: Int = 0,
+        onClick: () -> Unit
+    ) {
+        NavigationDrawerItem(
+            icon = { Icon(icon, contentDescription = null, tint = colors.textBase) },
+            label = {
+                Text(
+                    label,
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                    color = colors.textBase
+                )
+            },
+            badge = if (badgeCount > 0) {
+                {
+                    Box(
+                        modifier = Modifier
+                            .clip(CircleShape)
+                            .background(colors.primaryContainer)
+                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                    ) {
+                        Text(
+                            badgeCount.toString(),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = colors.primaryDefault
+                        )
+                    }
+                }
+            } else null,
+            selected = false,
+            onClick = {
+                scope.launch { drawerState.close() }
+                onClick()
+            },
+            modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
+        )
+    }
 
     ModalNavigationDrawer(
         drawerState = drawerState,
-        gesturesEnabled = isHomeActive,
+        // While open, the drawer owns horizontal drags on every pager tab — the
+        // HorizontalPager would otherwise consume swipes on Transactions,
+        // Insights and Settings and prevent swipe-to-close.
+        gesturesEnabled = drawerState.isOpen,
         drawerContent = {
             ModalDrawerSheet(
-                drawerContainerColor = colors.fillLight
+                drawerContainerColor = colors.fillBase,
+                modifier = Modifier.width(280.dp)
             ) {
-                // Header with Logo
+                // Header: official r ₹ mark inside a 44.dp squircle.
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 20.dp, vertical = 24.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Image(
-                        painter = painterResource(id = R.drawable.ic_launcher_monochrome),
-                        contentDescription = "App Logo",
+                    Box(
                         modifier = Modifier
-                            .size(42.dp)
-                            .clip(RoundedCornerShape(10.dp))
-                    )
-                    Spacer(modifier = Modifier.width(16.dp))
-                    Text(
-                        text = "Reserve",
-                        style = MaterialTheme.typography.headlineSmall,
-                        color = colors.textBase
-                    )
+                            .size(44.dp)
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(colors.surface)
+                            .border(1.dp, colors.strokeFaint, RoundedCornerShape(14.dp)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Image(
+                            painter = painterResource(id = R.drawable.ic_launcher_monochrome),
+                            contentDescription = "Reserve",
+                            modifier = Modifier.size(28.dp)
+                        )
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    Column {
+                        Text(
+                            "Reserve",
+                            style = MaterialTheme.typography.titleLarge.copy(
+                                fontSize = 20.sp, fontWeight = FontWeight.ExtraBold
+                            ),
+                            color = colors.textBase
+                        )
+                        Text(
+                            "Offline Ledger",
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
+                            color = colors.textLighter
+                        )
+                    }
                 }
 
-                NavigationDrawerItem(
-                    icon = { Icon(Icons.Outlined.Category, contentDescription = null, tint = colors.textBase) },
-                    label = { Text("Categories", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold), color = colors.textBase) },
-                    selected = false,
-                    onClick = {
-                        scope.launch { drawerState.close() }
-                        navController.navigate(Routes.Categories) {
-                            launchSingleTop = true
-                            restoreState = true
+                // Group 1 — organise
+                DrawerItem("Categories", Icons.Outlined.Category) {
+                    navController.navigate(Routes.Categories) { launchSingleTop = true }
+                }
+                DrawerItem("Accounts", Icons.Outlined.AccountBalance) {
+                    navController.navigate(Routes.Accounts) { launchSingleTop = true }
+                }
+                DrawerItem("Budgets", Icons.Outlined.PieChart) {
+                    navController.navigate(Routes.Budgets) { launchSingleTop = true }
+                }
+                DrawerItem("Recurring", Icons.Outlined.Repeat) {
+                    navController.navigate(Routes.Recurring) { launchSingleTop = true }
+                }
+
+                DrawerGroupDivider()
+
+                // Group 2 — preferences
+                DrawerItem("Settings", Icons.Outlined.Settings) {
+                    scope.launch {
+                        if (currentRoute == Routes.Home) {
+                            pagerState.animateScrollToPage(3, animationSpec = tween(200))
+                        } else {
+                            navController.navigate(Routes.Settings) { launchSingleTop = true }
                         }
-                    },
-                    modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
-                )
+                    }
+                }
 
-                NavigationDrawerItem(
-                    icon = { Icon(Icons.Outlined.AccountBalance, contentDescription = null, tint = colors.textBase) },
-                    label = { Text("Accounts", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold), color = colors.textBase) },
-                    selected = false,
-                    onClick = {
-                        scope.launch { drawerState.close() }
-                        navController.navigate(Routes.Accounts) {
-                            launchSingleTop = true
-                            restoreState = true
-                        }
-                    },
-                    modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
-                )
+                DrawerGroupDivider()
 
-                NavigationDrawerItem(
-                    icon = { Icon(Icons.Outlined.PieChart, contentDescription = null, tint = colors.textBase) },
-                    label = { Text("Budgets", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold), color = colors.textBase) },
-                    selected = false,
-                    onClick = {
-                        scope.launch { drawerState.close() }
-                        navController.navigate(Routes.Budgets) {
-                            launchSingleTop = true
-                            restoreState = true
-                        }
-                    },
-                    modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
-                )
-
-                NavigationDrawerItem(
-                    icon = { Icon(Icons.Outlined.Repeat, contentDescription = null, tint = colors.textBase) },
-                    label = { Text("Recurring", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold), color = colors.textBase) },
-                    selected = false,
-                    onClick = {
-                        scope.launch { drawerState.close() }
-                        navController.navigate(Routes.Recurring) {
-                            launchSingleTop = true
-                            restoreState = true
-                        }
-                    },
-                    modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
-                )
-
-                NavigationDrawerItem(
-                    icon = { Icon(Icons.Outlined.Settings, contentDescription = null, tint = colors.textBase) },
-                    label = { Text("Settings", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold), color = colors.textBase) },
-                    selected = false,
-                    onClick = {
-                        scope.launch {
-                            drawerState.close()
-                            if (currentRoute == Routes.Home) {
-                                pagerState.animateScrollToPage(3, animationSpec = tween(200))
-                            } else {
-                                navController.navigate(Routes.Settings) {
-                                    launchSingleTop = true
-                                    restoreState = true
-                                }
-                            }
-                        }
-                    },
-                    modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
-                )
-
-                NavigationDrawerItem(
-                    icon = { Icon(Icons.Outlined.FileUpload, contentDescription = null, tint = colors.textBase) },
-                    label = { Text("Export CSV", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold), color = colors.textBase) },
-                    selected = false,
-                    onClick = {
-                        scope.launch { drawerState.close() }
-                        exportLauncher.launch("reserve-${LocalDate.now()}.csv")
-                    },
-                    modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
-                )
-
-                NavigationDrawerItem(
-                    icon = { Icon(Icons.Outlined.FileDownload, contentDescription = null, tint = colors.textBase) },
-                    label = { Text("Import CSV", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold), color = colors.textBase) },
-                    selected = false,
-                    onClick = {
-                        scope.launch { drawerState.close() }
-                        importLauncher.launch(arrayOf("text/csv", "text/comma-separated-values", "text/plain"))
-                    },
-                    modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
-                )
-
-                NavigationDrawerItem(
-                    icon = { Icon(Icons.Outlined.Backup, contentDescription = null, tint = colors.textBase) },
-                    label = { Text("Create Backup", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold), color = colors.textBase) },
-                    selected = false,
-                    onClick = {
-                        scope.launch { drawerState.close() }
-                        backupLauncher.launch("reserve-backup-${LocalDate.now()}.json")
-                    },
-                    modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
-                )
-
-                NavigationDrawerItem(
-                    icon = { Icon(Icons.Outlined.Restore, contentDescription = null, tint = colors.textBase) },
-                    label = { Text("Restore Backup", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold), color = colors.textBase) },
-                    selected = false,
-                    onClick = {
-                        scope.launch { drawerState.close() }
-                        restoreLauncher.launch(arrayOf("application/json", "text/plain"))
-                    },
-                    modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
-                )
+                // Group 3 — data
+                DrawerItem("Export CSV", Icons.Outlined.FileUpload) {
+                    exportLauncher.launch("reserve-${LocalDate.now()}.csv")
+                }
+                DrawerItem("Import CSV", Icons.Outlined.FileDownload) {
+                    importLauncher.launch(arrayOf("text/csv", "text/comma-separated-values", "text/plain"))
+                }
+                DrawerItem("Create Backup", Icons.Outlined.Backup) {
+                    backupLauncher.launch("reserve-backup-${LocalDate.now()}.json")
+                }
+                DrawerItem("Restore Backup", Icons.Outlined.Restore) {
+                    restoreLauncher.launch(arrayOf("application/json", "text/plain"))
+                }
+                DrawerItem(
+                    label = "Trash",
+                    icon = Icons.Outlined.DeleteOutline,
+                    badgeCount = state.trashedTransactions.size
+                ) {
+                    navController.navigate(Routes.Trash) { launchSingleTop = true }
+                }
             }
         }
     ) {
         Scaffold(
             containerColor = colors.fillBase,
-            snackbarHost = { SnackbarHost(snackbarHostState) }
+            snackbarHost = {
+                SnackbarHost(
+                    hostState = snackbarHostState,
+                    modifier = Modifier
+                        .navigationBarsPadding()
+                        .padding(start = spacing_lg, end = spacing_lg, bottom = 88.dp)
+                ) { data ->
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = colors.surface,
+                        tonalElevation = 0.dp,
+                        shadowElevation = 0.dp,
+                        border = BorderStroke(1.dp, colors.strokeFaint)
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = spacing_lg, vertical = spacing_md),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                data.visuals.message,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = colors.textBase,
+                                modifier = Modifier.weight(1f)
+                            )
+                            data.visuals.actionLabel?.let { label ->
+                                TextButton(onClick = { data.performAction() }) {
+                                    Text(
+                                        label,
+                                        style = MaterialTheme.typography.labelLarge.copy(
+                                            fontWeight = FontWeight.Bold
+                                        ),
+                                        color = colors.primaryDefault
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         ) { innerPadding ->
             Box(
                 modifier = Modifier
@@ -674,7 +720,10 @@ private fun MainNavigation(
                                         onPreviousMonth = { ledgerViewModel.shiftMonth(-1) },
                                         onNextMonth = { ledgerViewModel.shiftMonth(1) },
                                         onOpenMenu = { scope.launch { drawerState.open() } },
-                                        onToggleHideAmounts = onToggleHideAmounts
+                                        onToggleHideAmounts = onToggleHideAmounts,
+                                        onSetCategory = { transaction, categoryId ->
+                                            ledgerViewModel.setTransactionCategory(transaction, categoryId)
+                                        }
                                     )
                                     1 -> TransactionsScreen(
                                         state = state,
@@ -834,14 +883,22 @@ private fun MainNavigation(
                             onBack = { navController.navigateUp() }
                         )
                     }
+                    composable(Routes.Trash) {
+                        TrashScreen(
+                            state = state,
+                            onBack = { navController.navigateUp() },
+                            onRestore = { ledgerViewModel.restoreFromTrash(it) },
+                            onDeleteForever = { ledgerViewModel.deleteForever(it) },
+                            onEmptyTrash = { ledgerViewModel.emptyTrash() }
+                        )
+                    }
                 }
 
                 if (currentRoute == Routes.Home) {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .align(Alignment.BottomCenter)
-                            .padding(bottom = 24.dp),
+                            .align(Alignment.BottomCenter),
                         contentAlignment = Alignment.Center
                     ) {
                         ReserveBottomBar(
@@ -858,4 +915,16 @@ private fun MainNavigation(
             }
         }
     }
+}
+
+@Composable
+private fun DrawerGroupDivider() {
+    val colors = LocalReserveColors.current
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 12.dp)
+            .height(1.dp)
+            .background(colors.strokeFaint)
+    )
 }

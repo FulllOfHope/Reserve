@@ -2,6 +2,7 @@ package com.app.reserve.core.application
 
 import android.app.Application
 import android.content.Context
+import com.app.reserve.core.data.TRASH_RETENTION_MS
 import com.app.reserve.core.data.ReserveRepository
 import com.app.reserve.core.database.ReserveDatabase
 import com.app.reserve.core.datastore.SettingsDataStore
@@ -24,6 +25,10 @@ class ReserveApplication : Application() {
         container = AppContainer(this)
         container.scope.launch {
             container.repository.ensureSeeded()
+            // Trash rows older than 30 days are removed permanently on startup.
+            runCatching {
+                container.repository.purgeExpiredTrash(System.currentTimeMillis() - TRASH_RETENTION_MS)
+            }
             // One-time v3 repair must finish before any new SMS is imported.
             runCatching {
                 if (!container.settings.currentSettings().ledgerRepairedV3 &&

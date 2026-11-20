@@ -19,12 +19,20 @@ import java.time.ZoneId
 import java.util.Locale
 import java.util.UUID
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+
+/** Items in Trash are purged permanently after this long (30 days). */
+const val TRASH_RETENTION_MS = 30L * 24 * 60 * 60 * 1000
 
 /**
  * All writes go through this repository so an account balance and its
  * transaction rows can never disagree. Money stays in Long minor units.
  */
 class ReserveRepository(private val database: ReserveDatabase) {
+
+    /** Serialises delete/restore so a fast Undo can never race the soft-delete. */
+    private val trashMutex = Mutex()
 
     private val transactionDao get() = database.transactionDao()
     private val categoryDao get() = database.categoryDao()
@@ -34,6 +42,7 @@ class ReserveRepository(private val database: ReserveDatabase) {
     private val smsImportDao get() = database.smsImportDao()
 
     val transactions: Flow<List<TransactionEntity>> = transactionDao.observeAll()
+    val trashedTransactions: Flow<List<TransactionEntity>> = transactionDao.observeTrashed()
     val categories: Flow<List<CategoryEntity>> = categoryDao.observeAll()
     val accounts: Flow<List<AccountEntity>> = accountDao.observeAll()
     val budgets: Flow<List<BudgetEntity>> = budgetDao.observeAll()
@@ -122,6 +131,64 @@ class ReserveRepository(private val database: ReserveDatabase) {
         }
     }
 
+    // ---------------------------------------------------------------------
+    // Trash. Balance effects are applied once, on the deletedAt transition:
+    // soft-delete reverses, restore re-applies, permanent delete does neither.
+    // ---------------------------------------------------------------------
+
+    /** Moves an active row to Trash and reverses its balance effect. */
+    suspend fun softDeleteTransaction(id: String, now: Long = System.currentTimeMillis()): Boolean =
+        trashMutex.withLock {
+            var changed = false
+            database.withTransaction {
+                val row = transactionDao.getByIdIncludingDeleted(id) ?: return@withTransaction
+                if (row.deletedAt != null) return@withTransaction
+                applyBalance(row, reverse = true)
+                transactionDao.softDeleteTransaction(id, now)
+                changed = true
+            }
+            changed
+        }
+
+    /** Restores a trashed row to its original timestamp/position and balance. */
+    suspend fun restoreTransaction(id: String): Boolean = trashMutex.withLock {
+        var changed = false
+        database.withTransaction {
+            val row = transactionDao.getByIdIncludingDeleted(id) ?: return@withTransaction
+            if (row.deletedAt == null) return@withTransaction
+            applyBalance(row, reverse = false)
+            transactionDao.restoreTransaction(id)
+            changed = true
+        }
+        changed
+    }
+
+    /** Removes a row forever. Safe even if it was somehow still active. */
+    suspend fun permanentlyDeleteTransaction(id: String) = trashMutex.withLock {
+        database.withTransaction {
+            val row = transactionDao.getByIdIncludingDeleted(id) ?: return@withTransaction
+            if (row.deletedAt == null) applyBalance(row, reverse = true)
+            transactionDao.permanentlyDeleteTransaction(id)
+        }
+    }
+
+    /** Re-categorises a transaction without touching its balance or tombstone. */
+    suspend fun updateTransactionCategory(id: String, categoryId: String?) {
+        val row = transactionDao.getByIdIncludingDeleted(id) ?: return
+        transactionDao.update(row.copy(categoryId = categoryId))
+    }
+
+    suspend fun emptyTrash() = trashMutex.withLock {
+        database.withTransaction { transactionDao.emptyTrash() }
+    }
+
+    /** Purges tombstones older than [cutoff]. Returns how many rows were removed. */
+    suspend fun purgeExpiredTrash(cutoff: Long): Int = trashMutex.withLock {
+        val before = transactionDao.getTrashedTransactions().count { it.deletedAt != null && it.deletedAt!! < cutoff }
+        if (before > 0) transactionDao.purgeExpiredTrash(cutoff)
+        before
+    }
+
     private suspend fun applyBalance(transaction: TransactionEntity, reverse: Boolean) {
         val sign = if (reverse) -1L else 1L
         LedgerMath.deltas(
@@ -184,7 +251,8 @@ class ReserveRepository(private val database: ReserveDatabase) {
 
     /** Accounts with history are archived, never deleted, so old rows stay valid. */
     suspend fun deleteOrArchiveAccount(account: AccountEntity): Boolean {
-        val used = transactionDao.getAll().any {
+        // Include Trash: restoring a trashed row must still find its account.
+        val used = transactionDao.getAllIncludingDeleted().any {
             it.accountId == account.id || it.targetAccountId == account.id
         }
         return if (used) {
@@ -274,7 +342,7 @@ class ReserveRepository(private val database: ReserveDatabase) {
     suspend fun snapshot(): LedgerSnapshot = LedgerSnapshot(
         accounts = accountDao.getAll(),
         categories = categoryDao.getAll(),
-        transactions = transactionDao.getAll(),
+        transactions = transactionDao.getAllIncludingDeleted(),
         budgets = budgetDao.getAll(),
         recurring = recurringDao.getAll()
     )

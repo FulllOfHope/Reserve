@@ -13,8 +13,8 @@ android {
         applicationId = "com.app.reserve"
         minSdk = 26
         targetSdk = 37
-        versionCode = 9
-        versionName = "1.6.0"
+        versionCode = 10
+        versionName = "1.7.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

@@ -17,7 +17,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         RecurringEntity::class,
         SmsImportEntity::class
     ],
-    version = 3,
+    version = 4,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -56,6 +56,13 @@ abstract class ReserveDatabase : RoomDatabase() {
             }
         }
 
+        /** v4 adds a nullable tombstone column for Trash. Additive only; no data is lost. */
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `transactions` ADD COLUMN `deletedAt` INTEGER")
+            }
+        }
+
         fun get(context: Context): ReserveDatabase =
             instance ?: synchronized(this) {
                 instance ?: Room.databaseBuilder(
@@ -63,7 +70,7 @@ abstract class ReserveDatabase : RoomDatabase() {
                     ReserveDatabase::class.java,
                     "reserve.db"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
                     .fallbackToDestructiveMigration()
                     .openHelperFactory(net.zetetic.database.sqlcipher.SupportOpenHelperFactory(DbSecurity.getPassphrase(context)))
                     .build()

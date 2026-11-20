@@ -29,6 +29,8 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import kotlin.math.pow
 import com.app.reserve.core.designsystem.EmptyState
 import com.app.reserve.core.designsystem.HiddenAmount
 import com.app.reserve.core.designsystem.LocalAmountsHidden
@@ -76,7 +78,7 @@ fun InsightsScreen(
 
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 96.dp)
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 108.dp)
         ) {
             item {
                 Spacer(modifier = Modifier.height(8.dp))
@@ -284,88 +286,96 @@ private fun TrendChart(
 ) {
     val colors = LocalReserveColors.current
     val textMeasurer = androidx.compose.ui.text.rememberTextMeasurer()
-    
+
     Canvas(
         modifier = modifier
             .fillMaxWidth()
             .height(180.dp)
-            .padding(top = 16.dp)
     ) {
         if (series.isEmpty()) return@Canvas
-        
-        val maxAmount = series.maxOfOrNull { maxOf(it.spent, it.income) }?.coerceAtLeast(1L) ?: 1L
-        
+
+        // Expenses only — matching the "Expenses only" label above the chart.
+        val maxAmount = series.maxOfOrNull { it.spent }?.coerceAtLeast(1L) ?: 1L
+
         val textStyle = androidx.compose.ui.text.TextStyle(
             color = colors.textLighter,
-            fontSize = androidx.compose.ui.unit.TextUnit(12f, androidx.compose.ui.unit.TextUnitType.Sp),
-            fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
+            fontSize = 10.sp,
+            fontWeight = androidx.compose.ui.text.font.FontWeight.Medium,
             fontFeatureSettings = "tnum"
         )
 
-        val bottomPadding = 0.dp.toPx()
-        val usableHeight = size.height - bottomPadding - 24.dp.toPx() // space for text above
+        val labelSpace = 28.dp.toPx()
+        val usableHeight = (size.height - labelSpace).coerceAtLeast(1f)
         val usableWidth = size.width
-        
-        // Draw baseline
+        val minBarHeight = 6.dp.toPx()
+        val barWidth = 14.dp.toPx()
+        val radius = 6.dp.toPx()
+
+        // Baseline
         drawLine(
             color = colors.strokeFaint,
             start = Offset(0f, usableHeight),
             end = Offset(usableWidth, usableHeight),
-            strokeWidth = 2.dp.toPx()
+            strokeWidth = 1.dp.toPx()
         )
-        
-        val step = usableWidth / series.size.coerceAtLeast(1)
-        val barGroupWidth = step * 0.7f
-        val barWidth = barGroupWidth * 0.45f
-        val spacing = barGroupWidth * 0.1f
-        val radius = 10.dp.toPx() // equivalent to 20.dp corner radius effect for the scale
 
+        val step = usableWidth / series.size.coerceAtLeast(1)
         series.forEachIndexed { index, monthData ->
             val centerX = (index * step) + (step / 2)
-            val incomeHeight = (monthData.income.toFloat() / maxAmount.toFloat()) * usableHeight
-            val spentHeight = (monthData.spent.toFloat() / maxAmount.toFloat()) * usableHeight
-            
-            // Draw Income Bar
-            if (monthData.income > 0) {
-                val incomeX = centerX - (barWidth / 2) - (spacing / 2)
-                drawRoundRect(
-                    color = colors.primaryDefault,
-                    topLeft = Offset(incomeX - (barWidth/2), usableHeight - incomeHeight),
-                    size = Size(barWidth, incomeHeight),
-                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(radius, radius)
+            if (monthData.spent <= 0L) return@forEachIndexed
+
+            // Power scaling keeps ordinary months visible next to spike months.
+            val ratio = (monthData.spent.toFloat() / maxAmount.toFloat())
+                .coerceIn(0f, 1f).pow(0.45f)
+            val barHeight = (ratio * usableHeight).coerceAtLeast(minBarHeight)
+            val top = usableHeight - barHeight
+            val left = centerX - (barWidth / 2f)
+
+            // Square bottom, 6.dp rounded top corners.
+            drawRect(
+                color = colors.primaryDefault,
+                topLeft = Offset(left, top + radius),
+                size = Size(barWidth, (barHeight - radius).coerceAtLeast(0f))
+            )
+            drawRoundRect(
+                color = colors.primaryDefault,
+                topLeft = Offset(left, top),
+                size = Size(barWidth, (radius * 2f).coerceAtMost(barHeight)),
+                cornerRadius = androidx.compose.ui.geometry.CornerRadius(radius, radius)
+            )
+
+            val label = if (amountsHidden) HiddenAmount else compactAmount(monthData.spent)
+            val textLayout = textMeasurer.measure(
+                androidx.compose.ui.text.AnnotatedString(label), textStyle
+            )
+            drawText(
+                textLayoutResult = textLayout,
+                topLeft = Offset(
+                    centerX - textLayout.size.width / 2f,
+                    (top - textLayout.size.height - 4.dp.toPx()).coerceAtLeast(0f)
                 )
-                
-                // Draw text above income bar
-                val incomeText = androidx.compose.ui.text.AnnotatedString(
-                    if (amountsHidden) HiddenAmount else Money.format(monthData.income).replace("₹", "").trim()
-                )
-                val textLayoutResult = textMeasurer.measure(incomeText, textStyle)
-                drawText(
-                    textLayoutResult = textLayoutResult,
-                    topLeft = Offset(incomeX - (textLayoutResult.size.width / 2f), usableHeight - incomeHeight - textLayoutResult.size.height - 4.dp.toPx())
-                )
-            }
-            
-            // Draw Spent Bar
-            if (monthData.spent > 0) {
-                val spentX = centerX + (barWidth / 2) + (spacing / 2)
-                drawRoundRect(
-                    color = colors.warningDefault,
-                    topLeft = Offset(spentX - (barWidth/2), usableHeight - spentHeight),
-                    size = Size(barWidth, spentHeight),
-                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(radius, radius)
-                )
-                
-                // Draw text above spent bar
-                val spentText = androidx.compose.ui.text.AnnotatedString(
-                    if (amountsHidden) HiddenAmount else Money.format(monthData.spent).replace("₹", "").trim()
-                )
-                val textLayoutResult = textMeasurer.measure(spentText, textStyle)
-                drawText(
-                    textLayoutResult = textLayoutResult,
-                    topLeft = Offset(spentX - (textLayoutResult.size.width / 2f), usableHeight - spentHeight - textLayoutResult.size.height - 4.dp.toPx())
-                )
-            }
+            )
+        }
+    }
+}
+
+/** 1.1L, 2.1k, 450 — compact enough that adjacent labels never collide. */
+private fun compactAmount(minor: Long): String {
+    // Ledger amounts are paise; chart labels are rupees.
+    val rupees = minor / 100.0
+    fun short(divisor: Double, suffix: String): String {
+        val rounded = kotlin.math.round(rupees / divisor * 10.0) / 10.0
+        val whole = rounded.toLong()
+        return if (rounded == whole.toDouble()) "$whole$suffix" else "$rounded$suffix"
+    }
+    return when {
+        rupees >= 10_000_000.0 -> short(10_000_000.0, "C")
+        rupees >= 100_000.0 -> short(100_000.0, "L")
+        rupees >= 1_000.0 -> short(1_000.0, "k")
+        else -> {
+            val rounded = kotlin.math.round(rupees * 10.0) / 10.0
+            val whole = rounded.toLong()
+            if (rounded == whole.toDouble()) whole.toString() else rounded.toString()
         }
     }
 }

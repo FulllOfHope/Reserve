@@ -83,7 +83,7 @@ fun AccountsScreen(
 
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 24.dp)
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 108.dp)
         ) {
             item {
                 SectionLabel(text = "Active")

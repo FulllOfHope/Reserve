@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -33,6 +34,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
 import com.app.reserve.R
@@ -129,14 +131,23 @@ fun AppLockScreen(onUnlocked: () -> Unit) {
                 onClick = { authenticate() },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(52.dp),
-                shape = RoundedCornerShape(16.dp),
+                    .height(50.dp),
+                shape = CircleShape,
+                elevation = ButtonDefaults.buttonElevation(
+                    defaultElevation = 0.dp, pressedElevation = 0.dp
+                ),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = colors.primaryDefault,
                     contentColor = colors.textReverse
                 )
             ) {
-                Text("Unlock", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    "Unlock",
+                    style = MaterialTheme.typography.labelLarge.copy(
+                        fontSize = 15.sp,
+                        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                    )
+                )
             }
             message?.let {
                 Spacer(modifier = Modifier.height(12.dp))

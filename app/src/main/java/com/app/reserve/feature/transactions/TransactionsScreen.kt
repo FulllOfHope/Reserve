@@ -2,8 +2,8 @@ package com.app.reserve.feature.transactions
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -15,8 +15,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
@@ -46,7 +46,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.app.reserve.core.database.TransactionEntity
@@ -105,27 +107,33 @@ fun TransactionsScreen(
         )
         SearchField(query = query, onQueryChange = { query = it })
 
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .horizontalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp, vertical = 8.dp),
+        LazyRow(
+            modifier = Modifier.fillMaxWidth(),
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            TypeFilter.entries.forEach { option ->
+            items(TypeFilter.entries) { option ->
+                val selected = filter == option
                 FilterChip(
-                    selected = filter == option,
+                    selected = selected,
                     onClick = { filter = option },
-                    label = { Text(option.label) },
+                    label = {
+                        Text(
+                            option.label,
+                            style = MaterialTheme.typography.labelLarge.copy(
+                                fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
+                            )
+                        )
+                    },
                     colors = FilterChipDefaults.filterChipColors(
-                        containerColor = colors.fillLight,
+                        containerColor = colors.surface,
                         labelColor = colors.textLight,
-                        selectedContainerColor = colors.primaryDefault.copy(alpha = 0.12f),
+                        selectedContainerColor = colors.primaryContainer,
                         selectedLabelColor = colors.primaryDefault
                     ),
                     border = FilterChipDefaults.filterChipBorder(
                         enabled = true,
-                        selected = filter == option,
+                        selected = selected,
                         borderColor = colors.strokeFaint,
                         selectedBorderColor = colors.primaryDefault
                     )
@@ -145,7 +153,7 @@ fun TransactionsScreen(
         } else {
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 96.dp)
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 108.dp)
             ) {
                 grouped.forEach { (date, dayTransactions) ->
                     item(key = "header-$date") {
@@ -296,14 +304,15 @@ private fun SwipeRow(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(colors.warningDefault.copy(alpha = 0.10f))
+                    .padding(horizontal = 4.dp, vertical = 2.dp)
+                    .background(colors.warningDefault, RoundedCornerShape(16.dp))
                     .padding(end = 24.dp),
                 contentAlignment = Alignment.CenterEnd
             ) {
                 Icon(
                     imageVector = Icons.Rounded.DeleteOutline,
                     contentDescription = "Delete",
-                    tint = colors.warningDefault
+                    tint = Color.White
                 )
             }
         }

@@ -8,11 +8,15 @@ import androidx.compose.ui.graphics.Color
  */
 data class ReserveColors(
     val isDark: Boolean,
+    /** Page canvas. */
     val fillBase: Color,
-    /** Raised surface used by feature bottom sheets (e.g. app updates). */
+    /** Cards, sheets and the floating navigation capsule. */
     val surface: Color,
+    /** Subtle fills, search bar, inactive chips and the selected nav pill. */
     val fillLight: Color,
+    /** Hairline dividers and switch tracks. */
     val fillDark: Color,
+    /** Avatar containers and progress tracks. */
     val fillDarker: Color,
     val textBase: Color,
     val textLight: Color,
@@ -20,39 +24,45 @@ data class ReserveColors(
     val textReverse: Color,
     val strokeFaint: Color,
     val primaryDefault: Color,
+    /** Tint for active chips and selections. */
+    val primaryContainer: Color,
     val warningDefault: Color
 )
 
+/** Warm Alabaster & Sovereign Gold. */
 val ReserveLightColors = ReserveColors(
     isDark = false,
-    fillBase = Color(0xFFFFFFFF),       // Pure White
+    fillBase = Color(0xFFFAF9F6),
     surface = Color(0xFFFFFFFF),
-    fillLight = Color(0xFFF5F5F5),      // Light Grey
-    fillDark = Color(0xFFEDEDED),
-    fillDarker = Color(0xFFD4D4D8),
-    textBase = Color(0xFF1C1C1E),       // Heavy text
-    textLight = Color(0xFF8E8E93),      // Cap values / dates
-    textLighter = Color(0xFF8E8E93), 
+    fillLight = Color(0xFFF3F2EE),
+    fillDark = Color(0xFFE8E6E0),
+    fillDarker = Color(0xFFECEAE4),
+    textBase = Color(0xFF18181A),
+    textLight = Color(0xFF636366),
+    textLighter = Color(0xFF8E8E93),
     textReverse = Color(0xFFFFFFFF),
-    strokeFaint = Color(0xFFEDEDED),    // Fine partition hairline
-    primaryDefault = Color(0xFF0FB70F),  // Vibrant Ente Green
-    warningDefault = Color(0xFFD03434)   // Critical Red
+    strokeFaint = Color(0xFFE8E6E0),
+    primaryDefault = Color(0xFFC98A00),
+    primaryContainer = Color(0xFFFFF6DF),
+    warningDefault = Color(0xFFE53935)
 )
 
+/** Warm Obsidian & Luminous Amber. Never pure black. */
 val ReserveDarkColors = ReserveColors(
     isDark = true,
-    fillBase = Color(0xFF000000),       // Pure Black
-    surface = Color(0xFF212121),
-    fillLight = Color(0xFF151515),      // Dark Surface
-    fillDark = Color(0xFF292929),
-    fillDarker = Color(0xFF3E3E3E),
-    textBase = Color(0xFFFFFFFF),       // Pure White
-    textLight = Color(0xFFA1A1AA),
-    textLighter = Color(0xFFA1A1AA),
-    textReverse = Color(0xFF000000),
-    strokeFaint = Color(0xFF292929),
-    primaryDefault = Color(0xFF067018),  // Ente Green
-    warningDefault = Color(0xFFDD3434)
+    fillBase = Color(0xFF141413),
+    surface = Color(0xFF1E1E1C),
+    fillLight = Color(0xFF262624),
+    fillDark = Color(0xFF2E2E2B),
+    fillDarker = Color(0xFF2A2A27),
+    textBase = Color(0xFFF5F5F3),
+    textLight = Color(0xFFA8A8A4),
+    textLighter = Color(0xFF787874),
+    textReverse = Color(0xFF141413),
+    strokeFaint = Color(0xFF2C2C29),
+    primaryDefault = Color(0xFFF5B82E),
+    primaryContainer = Color(0xFF2E2614),
+    warningDefault = Color(0xFFEF5350)
 )
 
 /** Low-saturation category palette; readable on both light and dark surfaces. */

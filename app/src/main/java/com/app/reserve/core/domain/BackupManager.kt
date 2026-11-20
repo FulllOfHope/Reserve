@@ -14,7 +14,8 @@ import kotlinx.serialization.json.Json
 /** A complete, self-contained local backup. Stored as JSON on the device. */
 object BackupManager {
 
-    const val CURRENT_VERSION = 1
+    /** v2 adds `deletedAt` tombstones; v1 backups remain importable (field defaults to null). */
+    const val CURRENT_VERSION = 2
 
     private val json = Json {
         prettyPrint = true
@@ -96,7 +97,9 @@ data class BackupTransaction(
     val timestamp: Long,
     val note: String = "",
     val isRecurring: Boolean = false,
-    val createdAt: Long = 0L
+    val createdAt: Long = 0L,
+    /** Null for active rows; set for rows in Trash. Absent in legacy v1 backups. */
+    val deletedAt: Long? = null
 ) {
     fun toEntity() = TransactionEntity(
         id = id,
@@ -108,12 +111,14 @@ data class BackupTransaction(
         timestamp = timestamp,
         note = note,
         isRecurring = isRecurring,
-        createdAt = createdAt
+        createdAt = createdAt,
+        deletedAt = deletedAt
     )
 }
 
 fun TransactionEntity.toDto() = BackupTransaction(
-    id, amount, type.name, categoryId, accountId, targetAccountId, timestamp, note, isRecurring, createdAt
+    id, amount, type.name, categoryId, accountId, targetAccountId, timestamp, note, isRecurring, createdAt,
+    deletedAt
 )
 
 @Serializable

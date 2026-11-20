@@ -11,6 +11,7 @@ object Routes {
     const val Categories = "categories"
     const val Accounts = "accounts"
     const val Recurring = "recurring"
+    const val Trash = "trash"
 
     fun add(type: String, id: String? = null): String =
         "add/$type" + if (id.isNullOrBlank()) "" else "?id=$id"

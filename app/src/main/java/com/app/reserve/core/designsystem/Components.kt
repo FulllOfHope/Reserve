@@ -33,6 +33,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Backspace
+import androidx.compose.material.icons.rounded.Category
 import androidx.compose.material.icons.rounded.ChevronLeft
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Menu
@@ -54,6 +55,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.app.reserve.core.database.CategoryEntity
 import com.app.reserve.core.database.TransactionEntity
 import com.app.reserve.core.database.TransactionType
@@ -89,6 +91,18 @@ fun ReserveCard(
             Column(modifier = Modifier.padding(spacing_xl), content = content)
         }
     }
+}
+
+/** Ente-style 32 × 4.dp drag handle for title-less bottom sheets. */
+@Composable
+fun SheetHandle(modifier: Modifier = Modifier) {
+    val colors = LocalReserveColors.current
+    Box(
+        modifier = modifier
+            .size(width = 32.dp, height = 4.dp)
+            .clip(CircleShape)
+            .background(colors.fillDark)
+    )
 }
 
 @Composable
@@ -436,13 +450,16 @@ fun EnteButton(
     val bg = containerColor ?: colors.primaryDefault
     Surface(
         modifier = modifier
+            .height(50.dp)
             .clip(CircleShape)
             .clickable(enabled = enabled, onClick = onClick),
         shape = CircleShape,
-        color = if (enabled) bg else colors.fillDark
+        color = if (enabled) bg else colors.fillDark,
+        shadowElevation = 0.dp,
+        tonalElevation = 0.dp
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = EnteSpacing.xxl, vertical = 14.dp),
+            modifier = Modifier.padding(horizontal = EnteSpacing.xxl),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center
         ) {
@@ -450,15 +467,17 @@ fun EnteButton(
                 Icon(
                     imageVector = icon,
                     contentDescription = null,
-                    tint = if (enabled) Color.White else colors.textLighter,
+                    tint = if (enabled) colors.textReverse else colors.textLighter,
                     modifier = Modifier.size(20.dp)
                 )
                 Spacer(modifier = Modifier.width(EnteSpacing.sm))
             }
             Text(
                 text = text,
-                style = MaterialTheme.typography.titleMedium,
-                color = if (enabled) Color.White else colors.textLighter
+                style = MaterialTheme.typography.labelLarge.copy(
+                    fontSize = 15.sp, fontWeight = FontWeight.Bold
+                ),
+                color = if (enabled) colors.textReverse else colors.textLighter
             )
         }
     }
@@ -557,102 +576,81 @@ fun TransactionActionSheet(
     transaction: TransactionEntity,
     onEdit: () -> Unit,
     onDuplicate: () -> Unit,
+    onCategory: () -> Unit,
     onDelete: () -> Unit,
     onDismiss: () -> Unit
 ) {
     val colors = LocalReserveColors.current
     ModalBottomSheet(
         onDismissRequest = onDismiss,
-        containerColor = colors.fillBase,
+        containerColor = colors.surface,
         contentWindowInsets = { WindowInsets.ime },
-        shape = RoundedCornerShape(topStart = EnteRadius.xl, topEnd = EnteRadius.xl)
+        shape = RoundedCornerShape(topStart = EnteRadius.xl, topEnd = EnteRadius.xl),
+        tonalElevation = 0.dp
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = EnteSpacing.xxl, vertical = EnteSpacing.xl)
+                .padding(horizontal = EnteSpacing.lg, vertical = EnteSpacing.md),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
+            // No title — just the handle, then a single horizontal shelf.
+            SheetHandle()
+            Spacer(Modifier.height(EnteSpacing.xl))
+
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Edit Action
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(EnteRadius.md))
-                        .clickable {
-                            onDismiss()
-                            onEdit()
-                        }
-                        .padding(EnteSpacing.md)
-                ) {
-                    Icon(
-                        imageVector = Icons.Rounded.Edit,
-                        contentDescription = "Edit",
-                        tint = colors.textBase,
-                        modifier = Modifier.size(24.dp)
-                    )
-                    Text(
-                        text = "Edit",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = colors.textBase,
-                        modifier = Modifier.padding(top = 8.dp)
-                    )
+                ActionShelfItem("Edit", Icons.Rounded.Edit, colors.textBase) {
+                    onDismiss(); onEdit()
                 }
-
-                // Duplicate Action
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(EnteRadius.md))
-                        .clickable {
-                            onDismiss()
-                            onDuplicate()
-                        }
-                        .padding(EnteSpacing.md)
-                ) {
-                    Icon(
-                        imageVector = Icons.Rounded.ContentCopy,
-                        contentDescription = "Duplicate",
-                        tint = colors.textBase,
-                        modifier = Modifier.size(24.dp)
-                    )
-                    Text(
-                        text = "Duplicate",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = colors.textBase,
-                        modifier = Modifier.padding(top = 8.dp)
-                    )
+                ActionShelfItem("Duplicate", Icons.Rounded.ContentCopy, colors.textBase) {
+                    onDismiss(); onDuplicate()
                 }
-
-                // Delete Action
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(EnteRadius.md))
-                        .clickable {
-                            onDismiss()
-                            onDelete()
-                        }
-                        .padding(EnteSpacing.md)
-                ) {
-                    Icon(
-                        imageVector = Icons.Rounded.DeleteOutline,
-                        contentDescription = "Delete",
-                        tint = colors.warningDefault,
-                        modifier = Modifier.size(24.dp)
-                    )
-                    Text(
-                        text = "Delete",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = colors.warningDefault,
-                        modifier = Modifier.padding(top = 8.dp)
-                    )
+                ActionShelfItem("Category", Icons.Rounded.Category, colors.textBase) {
+                    onDismiss(); onCategory()
+                }
+                ActionShelfItem("Delete", Icons.Rounded.DeleteOutline, colors.warningDefault) {
+                    onDismiss(); onDelete()
                 }
             }
+            Spacer(Modifier.height(EnteSpacing.lg))
         }
+    }
+}
+
+@Composable
+private fun ActionShelfItem(
+    label: String,
+    icon: ImageVector,
+    tint: Color,
+    onClick: () -> Unit
+) {
+    val colors = LocalReserveColors.current
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier
+            .clip(RoundedCornerShape(EnteRadius.md))
+            .clickable(onClick = onClick)
+            .padding(EnteSpacing.sm)
+    ) {
+        Box(
+            modifier = Modifier
+                .size(44.dp)
+                .clip(RoundedCornerShape(14.dp))
+                .background(tint.copy(alpha = 0.09f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(icon, contentDescription = label, tint = tint, modifier = Modifier.size(22.dp))
+        }
+        Spacer(Modifier.height(EnteSpacing.sm))
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelMedium,
+            color = if (tint == colors.warningDefault) colors.warningDefault else colors.textBase
+        )
     }
 }
 

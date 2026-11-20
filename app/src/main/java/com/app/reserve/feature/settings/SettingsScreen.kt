@@ -219,7 +219,7 @@ fun SettingsScreen(
     Column(modifier = Modifier.fillMaxSize()) {
         androidx.compose.foundation.lazy.LazyColumn(
             modifier = Modifier.fillMaxSize(),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 96.dp)
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 108.dp)
         ) {
             // Appearance block
             item {
@@ -277,7 +277,7 @@ fun SettingsScreen(
                             )
                         }
                         Text(
-                            text = settings?.primaryColorHex ?: "#0FB70F",
+                            text = settings?.primaryColorHex ?: "#C98A00",
                             style = MaterialTheme.typography.labelSmall,
                             color = colors.textLighter
                         )
@@ -714,7 +714,7 @@ fun SettingsScreen(
 
     if (showColorPicker) {
         ColorPickerBottomSheet(
-            initialHex = settings?.primaryColorHex ?: "#0FB70F",
+            initialHex = settings?.primaryColorHex ?: "#C98A00",
             onApplyColor = onSetPrimaryColorHex,
             onDismiss = { showColorPicker = false }
         )
@@ -854,18 +854,10 @@ private fun ColorPickerBottomSheet(
     var hexInput by remember { mutableStateOf(initialHex) }
 
     val presetSwatches = listOf(
-        "#0FB70F", // Vibrant Ente Green
-        "#00A34A", // Emerald
-        "#007AFF", // Ocean Blue
-        "#2563EB", // Royal Blue
-        "#700FB7", // Violet
-        "#9333EA", // Purple
-        "#E91E63", // Rose
-        "#D03434", // Crimson
-        "#FF5733", // Coral
-        "#FF8C00", // Sunset Orange
-        "#D4AF37", // Gold
-        "#009688"  // Teal
+        "#C98A00", // Sovereign Gold (default)
+        "#08C225", // Ente Green
+        "#1D63DC", // Deep Cobalt
+        "#D95D39"  // Terracotta Coral
     )
 
     fun isValidHex(input: String): Boolean {
@@ -987,7 +979,7 @@ private fun ColorPickerBottomSheet(
                             hexInput = input.uppercase()
                         }
                     },
-                    placeholder = { Text("#0FB70F", color = colors.textLighter) },
+                    placeholder = { Text("#C98A00", color = colors.textLighter) },
                     singleLine = true,
                     isError = !isValid && hexInput.isNotEmpty(),
                     modifier = Modifier.weight(1f),

@@ -24,6 +24,8 @@ data class LedgerState(
     val loading: Boolean = true,
     val monthYear: String = Dates.currentMonthKey(),
     val transactions: List<TransactionEntity> = emptyList(),
+    /** Rows in Trash, ordered by most-recently-deleted first. */
+    val trashedTransactions: List<TransactionEntity> = emptyList(),
     val categories: List<CategoryEntity> = emptyList(),
     val accounts: List<AccountEntity> = emptyList(),
     val budgets: List<BudgetEntity> = emptyList(),
@@ -84,12 +86,14 @@ class LedgerViewModel(private val repository: ReserveRepository) : ViewModel() {
     val state: StateFlow<LedgerState> = combine(
         bundle,
         selectedMonth,
-        pendingDeletes
-    ) { data, monthYear, pending ->
+        pendingDeletes,
+        repository.trashedTransactions
+    ) { data, monthYear, pending, trashed ->
         LedgerState(
             loading = false,
             monthYear = monthYear,
             transactions = data.transactions,
+            trashedTransactions = trashed,
             categories = data.categories,
             accounts = data.accounts,
             budgets = data.budgets,
@@ -123,20 +127,36 @@ class LedgerViewModel(private val repository: ReserveRepository) : ViewModel() {
         }
     }
 
-    /** Removes the row from the list immediately but keeps it in the database. */
+    /**
+     * Moves the row to Trash immediately. `deletedAt` is persisted, the balance
+     * reverses at once, and the active flow drops the row — so no optimistic
+     * in-memory hiding is needed. The Undo snackbar calls [undoDelete].
+     */
     fun requestDelete(transaction: TransactionEntity) {
-        pendingDeletes.update { it + transaction.id }
+        viewModelScope.launch { repository.softDeleteTransaction(transaction.id) }
     }
 
+    /** Restores a just-deleted row to its exact position and balance. */
     fun undoDelete(transaction: TransactionEntity) {
-        pendingDeletes.update { it - transaction.id }
+        viewModelScope.launch { repository.restoreTransaction(transaction.id) }
     }
 
-    fun commitDelete(transaction: TransactionEntity) {
-        viewModelScope.launch {
-            repository.deleteTransaction(transaction)
-            pendingDeletes.update { it - transaction.id }
-        }
+    // -- Trash ---------------------------------------------------------------
+
+    fun restoreFromTrash(transaction: TransactionEntity) {
+        viewModelScope.launch { repository.restoreTransaction(transaction.id) }
+    }
+
+    fun setTransactionCategory(transaction: TransactionEntity, categoryId: String) {
+        viewModelScope.launch { repository.updateTransactionCategory(transaction.id, categoryId) }
+    }
+
+    fun deleteForever(transaction: TransactionEntity) {
+        viewModelScope.launch { repository.permanentlyDeleteTransaction(transaction.id) }
+    }
+
+    fun emptyTrash() {
+        viewModelScope.launch { repository.emptyTrash() }
     }
 
     // -- Categories ---------------------------------------------------------

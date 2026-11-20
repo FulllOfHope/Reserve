@@ -13,10 +13,15 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 
+private val darkAccentVariants = mapOf(
+    "#C98A00" to "#F5B82E", // Sovereign Gold → Luminous Amber
+    "#08C225" to "#069D1E"  // Ente Green → deeper green
+)
+
 @Composable
 fun ReserveTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
-    primaryColorHex: String = "#0FB70F",
+    primaryColorHex: String = "#C98A00",
     amountsHidden: Boolean = false,
     content: @Composable () -> Unit
 ) {
@@ -35,20 +40,23 @@ fun ReserveTheme(
     }
     val baseColors = if (darkTheme) ReserveDarkColors else ReserveLightColors
     val cleanHex = if (primaryColorHex.startsWith("#")) primaryColorHex else "#$primaryColorHex"
-    val dynamicPrimary = runCatching { Color(android.graphics.Color.parseColor(cleanHex)) }.getOrNull() ?: baseColors.primaryDefault
+    // Presets can define a luminous dark-mode sibling (Sovereign Gold → Amber,
+    // Ente Green → its deeper shade). Custom hexes are used as-is in both modes.
+    val effectiveHex = if (darkTheme) darkAccentVariants[cleanHex] ?: cleanHex else cleanHex
+    val dynamicPrimary = runCatching { Color(android.graphics.Color.parseColor(effectiveHex)) }.getOrNull() ?: baseColors.primaryDefault
     val colors = baseColors.copy(primaryDefault = dynamicPrimary)
 
     val colorScheme = if (darkTheme) {
         darkColorScheme(
             primary = colors.primaryDefault,
             onPrimary = colors.textReverse,
-            primaryContainer = colors.fillDark,
+            primaryContainer = colors.primaryContainer,
             onPrimaryContainer = colors.textBase,
             secondary = colors.textBase,
             onSecondary = colors.textReverse,
             background = colors.fillBase,
             onBackground = colors.textBase,
-            surface = colors.fillLight,
+            surface = colors.surface,
             onSurface = colors.textBase,
             surfaceVariant = colors.fillDark,
             onSurfaceVariant = colors.textLight,
@@ -61,13 +69,13 @@ fun ReserveTheme(
         lightColorScheme(
             primary = colors.primaryDefault,
             onPrimary = colors.textReverse,
-            primaryContainer = colors.fillDark,
+            primaryContainer = colors.primaryContainer,
             onPrimaryContainer = colors.textBase,
             secondary = colors.textBase,
             onSecondary = Color.White,
             background = colors.fillBase,
             onBackground = colors.textBase,
-            surface = colors.fillLight,
+            surface = colors.surface,
             onSurface = colors.textBase,
             surfaceVariant = colors.fillDark,
             onSurfaceVariant = colors.textLight,

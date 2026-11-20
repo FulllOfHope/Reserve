@@ -21,7 +21,9 @@ data class TransactionEntity(
     val timestamp: Long,
     val note: String = "",
     val isRecurring: Boolean = false,
-    val createdAt: Long = System.currentTimeMillis()
+    val createdAt: Long = System.currentTimeMillis(),
+    /** Non-null when the row is in Trash; null for active ledger rows. */
+    val deletedAt: Long? = null
 )
 
 @Entity(tableName = "categories")
