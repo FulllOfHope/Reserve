@@ -65,7 +65,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
@@ -315,9 +314,8 @@ fun SettingsScreen(
                                 .clip(CircleShape)
                                 .background(
                                     when (currentAlias) {
-                                        IconSwitcher.GLASSY_ALIAS -> Color(0xFF16181D)
-                                        IconSwitcher.MONOCHROME_ALIAS -> Color(0xFF151515)
-                                        else -> Color(0xFF00B843)
+                                        IconSwitcher.GLASSY_ALIAS -> Color.Transparent
+                                        else -> Color(0xFFDEE500)
                                     }
                                 )
                                 .border(1.dp, colors.strokeFaint, CircleShape)
@@ -330,7 +328,7 @@ fun SettingsScreen(
                                 color = colors.textBase
                             )
                             Text(
-                                text = "Choose Default, Glassy or Monochrome launcher icon",
+                                text = "Choose Default or Glassy launcher icon",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = colors.textLight
                             )
@@ -743,7 +741,6 @@ fun SettingsScreen(
 
 private fun appIconLabel(alias: String): String = when (alias) {
     IconSwitcher.GLASSY_ALIAS -> "Glassy"
-    IconSwitcher.MONOCHROME_ALIAS -> "Monochrome"
     else -> "Default"
 }
 
@@ -823,17 +820,6 @@ private fun AppIconPickerBottomSheet(
                 ) {
                     AppIconPreview(IconSwitcher.GLASSY_ALIAS)
                 }
-                AppIconChoiceCard(
-                    label = "Monochrome",
-                    selected = currentAlias == IconSwitcher.MONOCHROME_ALIAS,
-                    modifier = Modifier.weight(1f),
-                    onClick = {
-                        onSelectAlias(IconSwitcher.MONOCHROME_ALIAS)
-                        onDismiss()
-                    }
-                ) {
-                    AppIconPreview(IconSwitcher.MONOCHROME_ALIAS)
-                }
             }
 
             Spacer(modifier = Modifier.height(spacing_md))
@@ -912,50 +898,24 @@ private fun AppIconChoiceCard(
 
 @Composable
 private fun AppIconPreview(alias: String) {
-    val colors = LocalReserveColors.current
     val previewShape = RoundedCornerShape(14.dp)
+    val isGlassy = alias == IconSwitcher.GLASSY_ALIAS
+    val artwork = if (isGlassy) R.drawable.ic_preview_glassy else R.drawable.ic_launcher_foreground
 
-    when (alias) {
-        IconSwitcher.GLASSY_ALIAS -> Image(
-            painter = painterResource(R.drawable.ic_preview_glassy),
-            contentDescription = "Glassy icon preview",
-            modifier = Modifier
-                .size(56.dp)
-                .clip(previewShape)
+    // Both SVGs are 108dp canvases with the artwork scaled into the 66dp safe
+    // zone, so enlarge the drawable to make the artwork fill the 56dp preview.
+    Box(
+        modifier = Modifier
+            .size(56.dp)
+            .clip(previewShape)
+            .background(if (isGlassy) Color.Transparent else Color(0xFFDEE500)),
+        contentAlignment = Alignment.Center
+    ) {
+        Image(
+            painter = painterResource(artwork),
+            contentDescription = if (isGlassy) "Glassy icon preview" else "Default icon preview",
+            modifier = Modifier.size((56f * 108f / 66f).dp)
         )
-        IconSwitcher.MONOCHROME_ALIAS -> {
-            val background = if (colors.isDark) Color(0xFFF4F4F5) else Color(0xFF111315)
-            val markColor = if (colors.isDark) Color(0xFF111315) else Color.White
-            Box(
-                modifier = Modifier
-                    .size(56.dp)
-                    .clip(previewShape)
-                    .background(background)
-                    .border(1.dp, colors.strokeFaint, previewShape),
-                contentAlignment = Alignment.Center
-            ) {
-                Image(
-                    painter = painterResource(R.drawable.ic_reserve_mark),
-                    contentDescription = "Monochrome icon preview",
-                    colorFilter = ColorFilter.tint(markColor),
-                    modifier = Modifier.size(56.dp)
-                )
-            }
-        }
-        else -> Box(
-            modifier = Modifier
-                .size(56.dp)
-                .clip(previewShape)
-                .background(Color(0xFF00B843)),
-            contentAlignment = Alignment.Center
-        ) {
-            Image(
-                painter = painterResource(R.drawable.ic_reserve_mark),
-                contentDescription = "Default icon preview",
-                colorFilter = ColorFilter.tint(Color.White),
-                modifier = Modifier.size(56.dp)
-            )
-        }
     }
 }
 

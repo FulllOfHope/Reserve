@@ -8,20 +8,27 @@ object IconSwitcher {
 
     const val DEFAULT_ALIAS = "com.app.reserve.MainActivityDefault"
     const val GLASSY_ALIAS = "com.app.reserve.MainActivityGlassy"
-    const val MONOCHROME_ALIAS = "com.app.reserve.MainActivityMonochrome"
 
     val aliases = listOf(
         DEFAULT_ALIAS,
-        GLASSY_ALIAS,
-        MONOCHROME_ALIAS
+        GLASSY_ALIAS
     )
+
+    /** Aliases removed in later releases still map to the default icon. */
+    private val legacyAliases = setOf("com.app.reserve.MainActivityMonochrome")
+
+    fun normalizeAlias(alias: String?): String =
+        if (alias in aliases) alias!! else DEFAULT_ALIAS
+
+    fun isLegacyAlias(alias: String?): Boolean = alias in legacyAliases
 
     fun setAppIcon(context: Context, targetAlias: String) {
         val packageManager = context.packageManager
+        val resolvedAlias = normalizeAlias(targetAlias)
 
         for (alias in aliases) {
             val componentName = ComponentName(context, alias)
-            val state = if (alias == targetAlias) {
+            val state = if (alias == resolvedAlias) {
                 PackageManager.COMPONENT_ENABLED_STATE_ENABLED
             } else {
                 PackageManager.COMPONENT_ENABLED_STATE_DISABLED

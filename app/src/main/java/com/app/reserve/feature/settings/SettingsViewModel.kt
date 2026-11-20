@@ -20,6 +20,10 @@ class SettingsViewModel(
     private val updateRepository: UpdateRepository? = null
 ) : ViewModel() {
 
+    init {
+        viewModelScope.launch { settingsDataStore.reconcileAppIconAlias() }
+    }
+
     /** Null until DataStore has produced its first value, so the lock is not skipped. */
     val settings: StateFlow<ReserveSettings?> = settingsDataStore.settings.stateIn(
         viewModelScope,

@@ -60,7 +60,7 @@ class SettingsDataStore(private val context: Context) {
                 ThemeMode.valueOf(preferences[THEME_MODE] ?: ThemeMode.SYSTEM.name)
             }.getOrDefault(ThemeMode.SYSTEM),
             primaryColorHex = preferences[PRIMARY_COLOR_HEX] ?: "#00B843",
-            appIconAlias = preferences[APP_ICON_ALIAS] ?: IconSwitcher.DEFAULT_ALIAS,
+            appIconAlias = IconSwitcher.normalizeAlias(preferences[APP_ICON_ALIAS]),
             lastBackupAt = preferences[LAST_BACKUP_AT] ?: 0L,
             lastSmsScanAt = preferences[LAST_SMS_SCAN_AT] ?: 0L,
             smsImportedTotal = preferences[SMS_IMPORTED_TOTAL] ?: 0,
@@ -88,8 +88,20 @@ class SettingsDataStore(private val context: Context) {
     }
 
     suspend fun setAppIconAlias(alias: String) {
-        context.reserveDataStore.edit { it[APP_ICON_ALIAS] = alias }
-        IconSwitcher.setAppIcon(context, alias)
+        val normalized = IconSwitcher.normalizeAlias(alias)
+        context.reserveDataStore.edit { it[APP_ICON_ALIAS] = normalized }
+        IconSwitcher.setAppIcon(context, normalized)
+    }
+
+    /**
+     * A removed alias (e.g. the old monochrome option) can leave the launcher
+     * without an enabled icon after an update. Restore the default in that case.
+     */
+    suspend fun reconcileAppIconAlias() {
+        val stored = context.reserveDataStore.data.first()[APP_ICON_ALIAS]
+        if (stored != null && IconSwitcher.isLegacyAlias(stored)) {
+            setAppIconAlias(IconSwitcher.DEFAULT_ALIAS)
+        }
     }
 
     suspend fun setLastBackupAt(timestamp: Long) {
