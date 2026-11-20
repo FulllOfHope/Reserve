@@ -1,6 +1,7 @@
 package com.app.reserve.feature.home
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -42,7 +43,6 @@ import com.app.reserve.core.designsystem.LocalReserveColors
 import com.app.reserve.core.designsystem.MoneyText
 import com.app.reserve.core.designsystem.MonthSwitcher
 import com.app.reserve.core.designsystem.ReserveCard
-import com.app.reserve.core.designsystem.ReserveDivider
 import com.app.reserve.core.designsystem.SectionLabel
 import com.app.reserve.core.designsystem.SheetHandle
 import com.app.reserve.core.designsystem.TransactionActionSheet
@@ -73,7 +73,7 @@ fun HomeScreen(
 ) {
     val colors = LocalReserveColors.current
     val amountsHidden = LocalAmountsHidden.current
-    val recent = state.monthTransactions.sortedByDescending { it.timestamp }.take(5)
+    val recent = state.monthTransactions.sortedByDescending { it.timestamp }.take(3)
     val budgets = state.monthBudgets
     var activeActionSheetTransaction by remember { mutableStateOf<TransactionEntity?>(null) }
     var categoryPickerTransaction by remember { mutableStateOf<TransactionEntity?>(null) }
@@ -101,81 +101,92 @@ fun HomeScreen(
                     shadowElevation = 0.dp,
                     tonalElevation = 0.dp
                 ) {
-                    Column(modifier = Modifier.padding(20.dp)) {
-                    Box(modifier = Modifier.fillMaxWidth()) {
-                        Column(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            Text(
-                                text = "CURRENT BALANCE",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = colors.textLighter
-                            )
-                            Spacer(modifier = Modifier.height(6.dp))
-                            MoneyText(
-                                amount = state.totalBalance,
-                                style = MaterialTheme.typography.displayLarge.tabular().copy(
-                                    fontSize = 32.sp,
-                                    fontWeight = androidx.compose.ui.text.font.FontWeight.ExtraBold
-                                ),
+                    Column(modifier = Modifier.padding(22.dp)) {
+                        Box(modifier = Modifier.fillMaxWidth()) {
+                            Column(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Text(
+                                    text = "CURRENT BALANCE",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = colors.textLighter
+                                )
+                                Spacer(modifier = Modifier.height(12.dp))
+                                MoneyText(
+                                    amount = state.totalBalance,
+                                    style = MaterialTheme.typography.displayLarge.tabular().copy(
+                                        fontSize = 36.sp,
+                                        fontWeight = androidx.compose.ui.text.font.FontWeight.ExtraBold
+                                    ),
+                                    color = colors.textBase,
+                                    maxLines = 1
+                                )
+                                Spacer(modifier = Modifier.height(12.dp))
+                                Text(
+                                    text = buildString {
+                                        append(Dates.monthLabel(state.monthYear))
+                                        val accounts = state.activeAccounts.size
+                                        if (accounts > 0) {
+                                            append(" · ")
+                                            append(accounts)
+                                            append(if (accounts == 1) " account" else " accounts")
+                                        }
+                                    },
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = colors.textLight,
+                                    textAlign = TextAlign.Center
+                                )
+                            }
+                            IconButton(
+                                onClick = { onToggleHideAmounts(!amountsHidden) },
+                                modifier = Modifier.align(Alignment.TopEnd)
+                            ) {
+                                Icon(
+                                    imageVector = if (amountsHidden) {
+                                        Icons.Rounded.Visibility
+                                    } else {
+                                        Icons.Rounded.VisibilityOff
+                                    },
+                                    contentDescription = if (amountsHidden) "Show amounts" else "Hide amounts",
+                                    tint = colors.textLight
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(1.dp)
+                                .background(colors.strokeFaint)
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Row(modifier = Modifier.fillMaxWidth()) {
+                            MiniStat(
+                                label = "Spent",
+                                value = state.spent,
                                 color = colors.textBase,
-                                maxLines = 1
+                                modifier = Modifier.weight(1f)
                             )
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                text = buildString {
-                                    append(Dates.monthLabel(state.monthYear))
-                                    val accounts = state.activeAccounts.size
-                                    if (accounts > 0) {
-                                        append(" · ")
-                                        append(accounts)
-                                        append(if (accounts == 1) " account" else " accounts")
-                                    }
-                                },
-                                style = MaterialTheme.typography.bodySmall,
-                                color = colors.textLight,
-                                textAlign = TextAlign.Center
+                            MiniStat(
+                                label = "Income",
+                                value = state.income,
+                                color = colors.primaryDefault,
+                                modifier = Modifier.weight(1f)
+                            )
+                            MiniStat(
+                                label = "Net",
+                                value = state.net,
+                                color = if (state.net < 0) colors.warningDefault else colors.textBase,
+                                modifier = Modifier.weight(1f)
                             )
                         }
-                        IconButton(
-                            onClick = { onToggleHideAmounts(!amountsHidden) },
-                            modifier = Modifier.align(Alignment.TopEnd)
-                        ) {
-                            Icon(
-                                imageVector = if (amountsHidden) {
-                                    Icons.Rounded.Visibility
-                                } else {
-                                    Icons.Rounded.VisibilityOff
-                                },
-                                contentDescription = if (amountsHidden) "Show amounts" else "Hide amounts",
-                                tint = colors.textLight
-                            )
-                        }
-                    }
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Row(modifier = Modifier.fillMaxWidth()) {
-                        MiniStat(
-                            label = "Spent",
-                            value = state.spent,
-                            color = colors.textBase,
-                            modifier = Modifier.weight(1f)
-                        )
-                        MiniStat(
-                            label = "Income",
-                            value = state.income,
-                            color = colors.primaryDefault,
-                            modifier = Modifier.weight(1f)
-                        )
-                        MiniStat(
-                            label = "Net",
-                            value = state.net,
-                            color = if (state.net < 0) colors.warningDefault else colors.textBase,
-                            modifier = Modifier.weight(1f)
-                        )
-                    }
                     }
                 }
+            }
+
+            item {
+                Spacer(modifier = Modifier.height(24.dp))
             }
 
             item {
@@ -236,6 +247,10 @@ fun HomeScreen(
             }
 
             item {
+                Spacer(modifier = Modifier.height(24.dp))
+            }
+
+            item {
                 SectionLabel(
                     text = "Recent",
                     actionLabel = if (recent.isEmpty()) null else "See all",
@@ -254,13 +269,15 @@ fun HomeScreen(
                 }
             } else {
                 items(recent, key = { it.id }) { transaction ->
-                    TransactionRow(
-                        transaction = transaction,
-                        category = state.categoryFor(transaction.categoryId),
-                        onClick = { activeActionSheetTransaction = transaction }
-                    )
-                    if (transaction != recent.last()) {
-                        ReserveDivider()
+                    Column {
+                        TransactionRow(
+                            transaction = transaction,
+                            category = state.categoryFor(transaction.categoryId),
+                            onClick = { activeActionSheetTransaction = transaction }
+                        )
+                        if (transaction != recent.last()) {
+                            Spacer(modifier = Modifier.height(16.dp))
+                        }
                     }
                 }
             }

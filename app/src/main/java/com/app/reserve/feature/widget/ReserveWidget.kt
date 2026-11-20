@@ -42,6 +42,7 @@ import com.app.reserve.core.database.TransactionType
 import com.app.reserve.core.datastore.SettingsDataStore
 import com.app.reserve.core.datastore.ThemeMode
 import com.app.reserve.core.designsystem.HiddenAmount
+import com.app.reserve.core.designsystem.resolveAccentHex
 import com.app.reserve.core.domain.Dates
 import com.app.reserve.core.domain.Money
 import java.time.LocalDate
@@ -64,21 +65,21 @@ private data class WidgetPalette(
 )
 
 private val LightPalette = WidgetPalette(
-    base = Color(0xFFFAF9F6),
+    base = Color(0xFFF8F9FA),
     surface = Color(0xFFFFFFFF),
-    textBase = Color(0xFF18181A),
-    textLight = Color(0xFF636366),
-    stroke = Color(0xFFE8E6E0),
-    primary = Color(0xFFC98A00)
+    textBase = Color(0xFF111315),
+    textLight = Color(0xFF5C626A),
+    stroke = Color(0xFFE6E8EC),
+    primary = Color(0xFF00B843)
 )
 
 private val DarkPalette = WidgetPalette(
-    base = Color(0xFF141413),
-    surface = Color(0xFF1E1E1C),
-    textBase = Color(0xFFF5F5F3),
-    textLight = Color(0xFFA8A8A4),
-    stroke = Color(0xFF2C2C29),
-    primary = Color(0xFFF5B82E)
+    base = Color(0xFF121316),
+    surface = Color(0xFF1B1D21),
+    textBase = Color(0xFFF8F9FA),
+    textLight = Color(0xFFA6ACB5),
+    stroke = Color(0xFF282B30),
+    primary = Color(0xFF1CE865)
 )
 
 class ReserveWidget : GlanceAppWidget() {
@@ -98,9 +99,7 @@ class ReserveWidget : GlanceAppWidget() {
             }
         }
         val basePalette = if (dark) DarkPalette else LightPalette
-        val accentHex = settings?.primaryColorHex?.let {
-            if (it.startsWith("#")) it else "#$it"
-        }
+        val accentHex = settings?.primaryColorHex?.let { resolveAccentHex(it, dark) }
         val accent = accentHex?.let { hex ->
             runCatching { Color(android.graphics.Color.parseColor(hex)) }.getOrNull()
         }

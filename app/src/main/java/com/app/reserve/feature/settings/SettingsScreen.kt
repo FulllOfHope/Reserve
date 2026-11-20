@@ -6,6 +6,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.biometric.BiometricManager
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -64,17 +65,22 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.app.reserve.R
 import com.app.reserve.core.data.ImportSummary
 import com.app.reserve.core.datastore.ReserveSettings
 import com.app.reserve.core.datastore.ThemeMode
+import com.app.reserve.core.designsystem.AccentSwatches
 import com.app.reserve.core.designsystem.EnteButton
 import com.app.reserve.core.designsystem.LocalReserveColors
+import com.app.reserve.core.designsystem.normalizedAccentHex
 import com.app.reserve.core.designsystem.ReserveCard
 import com.app.reserve.core.designsystem.ReserveDivider
 import com.app.reserve.core.designsystem.radius_lg
@@ -277,7 +283,7 @@ fun SettingsScreen(
                             )
                         }
                         Text(
-                            text = settings?.primaryColorHex ?: "#C98A00",
+                            text = settings?.primaryColorHex?.let(::normalizedAccentHex) ?: "#00B843",
                             style = MaterialTheme.typography.labelSmall,
                             color = colors.textLighter
                         )
@@ -294,7 +300,7 @@ fun SettingsScreen(
 
                     // App Icon Option
                     val currentAlias = settings?.appIconAlias ?: IconSwitcher.DEFAULT_ALIAS
-                    val isMonochrome = currentAlias == IconSwitcher.MONOCHROME_ALIAS
+                    val currentIconLabel = appIconLabel(currentAlias)
 
                     Row(
                         modifier = Modifier
@@ -307,7 +313,13 @@ fun SettingsScreen(
                             modifier = Modifier
                                 .size(24.dp)
                                 .clip(CircleShape)
-                                .background(if (isMonochrome) Color(0xFF151515) else Color(0xFFDEE500))
+                                .background(
+                                    when (currentAlias) {
+                                        IconSwitcher.GLASSY_ALIAS -> Color(0xFF16181D)
+                                        IconSwitcher.MONOCHROME_ALIAS -> Color(0xFF151515)
+                                        else -> Color(0xFF00B843)
+                                    }
+                                )
                                 .border(1.dp, colors.strokeFaint, CircleShape)
                         )
                         Spacer(modifier = Modifier.width(12.dp))
@@ -318,13 +330,13 @@ fun SettingsScreen(
                                 color = colors.textBase
                             )
                             Text(
-                                text = "Choose default or minimalist monochrome launcher icon",
+                                text = "Choose Default, Glassy or Monochrome launcher icon",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = colors.textLight
                             )
                         }
                         Text(
-                            text = if (isMonochrome) "Monochrome" else "Default",
+                            text = currentIconLabel,
                             style = MaterialTheme.typography.labelSmall,
                             color = colors.textLighter
                         )
@@ -714,7 +726,7 @@ fun SettingsScreen(
 
     if (showColorPicker) {
         ColorPickerBottomSheet(
-            initialHex = settings?.primaryColorHex ?: "#C98A00",
+            initialHex = settings?.primaryColorHex?.let(::normalizedAccentHex) ?: "#00B843",
             onApplyColor = onSetPrimaryColorHex,
             onDismiss = { showColorPicker = false }
         )
@@ -727,6 +739,12 @@ fun SettingsScreen(
             onDismiss = { showIconPicker = false }
         )
     }
+}
+
+private fun appIconLabel(alias: String): String = when (alias) {
+    IconSwitcher.GLASSY_ALIAS -> "Glassy"
+    IconSwitcher.MONOCHROME_ALIAS -> "Monochrome"
+    else -> "Default"
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -756,12 +774,18 @@ private fun AppIconPickerBottomSheet(
                     .padding(vertical = spacing_md),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = "App Icon Style",
-                    style = MaterialTheme.typography.headlineLarge,
-                    color = colors.textBase,
-                    modifier = Modifier.weight(1f)
-                )
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "App Icon Style",
+                        style = MaterialTheme.typography.headlineLarge,
+                        color = colors.textBase
+                    )
+                    Text(
+                        text = "Choose a launcher look",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = colors.textLight
+                    )
+                }
                 IconButton(onClick = onDismiss) {
                     Icon(
                         imageVector = Icons.Rounded.Close,
@@ -773,72 +797,164 @@ private fun AppIconPickerBottomSheet(
 
             Spacer(modifier = Modifier.height(spacing_md))
 
-            // Default Icon Option
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(radius_lg))
-                    .background(if (currentAlias == IconSwitcher.DEFAULT_ALIAS) colors.fillLight else Color.Transparent)
-                    .clickable {
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(spacing_md)
+            ) {
+                AppIconChoiceCard(
+                    label = "Default",
+                    selected = currentAlias == IconSwitcher.DEFAULT_ALIAS,
+                    modifier = Modifier.weight(1f),
+                    onClick = {
                         onSelectAlias(IconSwitcher.DEFAULT_ALIAS)
                         onDismiss()
                     }
-                    .padding(spacing_lg),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(36.dp)
-                        .clip(CircleShape)
-                        .background(Color(0xFFDEE500)),
-                    contentAlignment = Alignment.Center
                 ) {
-                    Text("R", fontWeight = FontWeight.Bold, color = Color.Black)
+                    AppIconPreview(IconSwitcher.DEFAULT_ALIAS)
                 }
-                Spacer(modifier = Modifier.width(16.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Text("Default Yellow", style = MaterialTheme.typography.titleMedium, color = colors.textBase)
-                    Text("Classic Reserve launcher icon", style = MaterialTheme.typography.bodySmall, color = colors.textLight)
+                AppIconChoiceCard(
+                    label = "Glassy",
+                    selected = currentAlias == IconSwitcher.GLASSY_ALIAS,
+                    modifier = Modifier.weight(1f),
+                    onClick = {
+                        onSelectAlias(IconSwitcher.GLASSY_ALIAS)
+                        onDismiss()
+                    }
+                ) {
+                    AppIconPreview(IconSwitcher.GLASSY_ALIAS)
                 }
-                if (currentAlias == IconSwitcher.DEFAULT_ALIAS) {
-                    Icon(imageVector = Icons.Rounded.Check, contentDescription = null, tint = colors.primaryDefault)
+                AppIconChoiceCard(
+                    label = "Monochrome",
+                    selected = currentAlias == IconSwitcher.MONOCHROME_ALIAS,
+                    modifier = Modifier.weight(1f),
+                    onClick = {
+                        onSelectAlias(IconSwitcher.MONOCHROME_ALIAS)
+                        onDismiss()
+                    }
+                ) {
+                    AppIconPreview(IconSwitcher.MONOCHROME_ALIAS)
                 }
             }
 
             Spacer(modifier = Modifier.height(spacing_md))
+            Text(
+                text = "Your transactions and settings stay exactly where they are.",
+                style = MaterialTheme.typography.labelSmall,
+                color = colors.textLighter
+            )
+        }
+    }
+}
 
-            // Monochrome Icon Option
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(radius_lg))
-                    .background(if (currentAlias == IconSwitcher.MONOCHROME_ALIAS) colors.fillLight else Color.Transparent)
-                    .clickable {
-                        onSelectAlias(IconSwitcher.MONOCHROME_ALIAS)
-                        onDismiss()
+@Composable
+private fun AppIconChoiceCard(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    preview: @Composable () -> Unit
+) {
+    val colors = LocalReserveColors.current
+    Surface(
+        modifier = modifier
+            .height(156.dp)
+            .clip(RoundedCornerShape(radius_lg))
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(radius_lg),
+        color = if (selected) colors.primaryContainer else colors.fillLight,
+        border = BorderStroke(
+            1.dp,
+            if (selected) colors.primaryDefault else colors.strokeFaint
+        ),
+        shadowElevation = 0.dp,
+        tonalElevation = 0.dp
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(spacing_md),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
+                Box(modifier = Modifier.align(Alignment.Center)) {
+                    preview()
+                }
+                if (selected) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .size(20.dp)
+                            .clip(CircleShape)
+                            .background(colors.primaryDefault),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Check,
+                            contentDescription = "Selected",
+                            tint = colors.textReverse,
+                            modifier = Modifier.size(12.dp)
+                        )
                     }
-                    .padding(spacing_lg),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(36.dp)
-                        .clip(CircleShape)
-                        .background(Color(0xFF151515))
-                        .border(1.dp, colors.strokeFaint, CircleShape),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text("R", fontWeight = FontWeight.Bold, color = Color.White)
-                }
-                Spacer(modifier = Modifier.width(16.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Text("Monochrome B&W", style = MaterialTheme.typography.titleMedium, color = colors.textBase)
-                    Text("Stark, minimalist black & white icon", style = MaterialTheme.typography.bodySmall, color = colors.textLight)
-                }
-                if (currentAlias == IconSwitcher.MONOCHROME_ALIAS) {
-                    Icon(imageVector = Icons.Rounded.Check, contentDescription = null, tint = colors.primaryDefault)
                 }
             }
+            Spacer(modifier = Modifier.height(spacing_sm))
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelLarge.copy(
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold
+                ),
+                color = if (selected) colors.textBase else colors.textLight
+            )
+        }
+    }
+}
+
+@Composable
+private fun AppIconPreview(alias: String) {
+    val colors = LocalReserveColors.current
+    val previewShape = RoundedCornerShape(14.dp)
+
+    when (alias) {
+        IconSwitcher.GLASSY_ALIAS -> Image(
+            painter = painterResource(R.drawable.ic_preview_glassy),
+            contentDescription = "Glassy icon preview",
+            modifier = Modifier
+                .size(56.dp)
+                .clip(previewShape)
+        )
+        IconSwitcher.MONOCHROME_ALIAS -> {
+            val background = if (colors.isDark) Color(0xFFF4F4F5) else Color(0xFF111315)
+            val markColor = if (colors.isDark) Color(0xFF111315) else Color.White
+            Box(
+                modifier = Modifier
+                    .size(56.dp)
+                    .clip(previewShape)
+                    .background(background)
+                    .border(1.dp, colors.strokeFaint, previewShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Image(
+                    painter = painterResource(R.drawable.ic_reserve_mark),
+                    contentDescription = "Monochrome icon preview",
+                    colorFilter = ColorFilter.tint(markColor),
+                    modifier = Modifier.size(56.dp)
+                )
+            }
+        }
+        else -> Box(
+            modifier = Modifier
+                .size(56.dp)
+                .clip(previewShape)
+                .background(Color(0xFF00B843)),
+            contentAlignment = Alignment.Center
+        ) {
+            Image(
+                painter = painterResource(R.drawable.ic_reserve_mark),
+                contentDescription = "Default icon preview",
+                colorFilter = ColorFilter.tint(Color.White),
+                modifier = Modifier.size(56.dp)
+            )
         }
     }
 }
@@ -853,12 +969,7 @@ private fun ColorPickerBottomSheet(
     val colors = LocalReserveColors.current
     var hexInput by remember { mutableStateOf(initialHex) }
 
-    val presetSwatches = listOf(
-        "#C98A00", // Sovereign Gold (default)
-        "#08C225", // Ente Green
-        "#1D63DC", // Deep Cobalt
-        "#D95D39"  // Terracotta Coral
-    )
+    val presetSwatches = AccentSwatches.map { it.lightHex }
 
     fun isValidHex(input: String): Boolean {
         val clean = if (input.startsWith("#")) input else "#$input"
@@ -917,10 +1028,10 @@ private fun ColorPickerBottomSheet(
             )
             Spacer(modifier = Modifier.height(spacing_sm))
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                presetSwatches.chunked(6).forEach { row ->
+                presetSwatches.chunked(5).forEach { row ->
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
+                        horizontalArrangement = Arrangement.SpaceEvenly
                     ) {
                         row.forEach { swatchHex ->
                             val swatchColor = runCatching { Color(android.graphics.Color.parseColor(swatchHex)) }.getOrDefault(Color.Green)
@@ -979,7 +1090,7 @@ private fun ColorPickerBottomSheet(
                             hexInput = input.uppercase()
                         }
                     },
-                    placeholder = { Text("#C98A00", color = colors.textLighter) },
+                    placeholder = { Text("#00B843", color = colors.textLighter) },
                     singleLine = true,
                     isError = !isValid && hexInput.isNotEmpty(),
                     modifier = Modifier.weight(1f),

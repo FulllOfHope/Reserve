@@ -239,6 +239,28 @@ fun TransactionRow(
     modifier: Modifier = Modifier
 ) {
     val colors = LocalReserveColors.current
+    val note = transaction.note.trim()
+    val smsPrefix = "SMS · "
+    val smsSource = if (note.startsWith(smsPrefix, ignoreCase = true)) {
+        note.substring(smsPrefix.length).trim()
+    } else {
+        ""
+    }
+    val displayTitle = when {
+        smsSource.isNotBlank() -> category?.name
+            ?: if (transaction.type == TransactionType.TRANSFER) "Transfer" else "Transaction"
+        note.isNotBlank() -> note
+        category != null -> category.name
+        transaction.type == TransactionType.TRANSFER -> "Transfer"
+        else -> "Transaction"
+    }
+    val metadata = buildString {
+        append(Dates.fullDate(transaction.timestamp))
+        if (smsSource.isNotBlank()) {
+            append(" · ")
+            append(smsSource)
+        }
+    }
     Row(
         modifier = modifier
             .fillMaxWidth()
@@ -253,22 +275,20 @@ fun TransactionRow(
         Spacer(modifier = Modifier.width(EnteSpacing.lg))
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = when {
-                    transaction.note.isNotBlank() -> transaction.note
-                    category != null -> category.name
-                    transaction.type == TransactionType.TRANSFER -> "Transfer"
-                    else -> "Transaction"
-                },
-                style = MaterialTheme.typography.titleMedium,
+                text = displayTitle,
+                style = MaterialTheme.typography.titleMedium.copy(
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold
+                ),
                 color = colors.textBase,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
             Spacer(modifier = Modifier.height(2.dp))
             Text(
-                text = Dates.fullDate(transaction.timestamp),
-                style = MaterialTheme.typography.labelMedium,
-                color = colors.textLight,
+                text = metadata,
+                style = MaterialTheme.typography.labelMedium.copy(fontSize = 12.sp),
+                color = colors.textLighter,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
@@ -281,7 +301,10 @@ fun TransactionRow(
         }
         MoneyText(
             amount = if (transaction.type == TransactionType.EXPENSE) -transaction.amount else transaction.amount,
-            style = MaterialTheme.typography.titleMedium.tabular(),
+            style = MaterialTheme.typography.titleMedium.copy(
+                fontSize = 15.sp,
+                fontWeight = FontWeight.SemiBold
+            ).tabular(),
             color = amountColor,
             showPlus = transaction.type == TransactionType.INCOME
         )

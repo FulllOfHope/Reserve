@@ -90,7 +90,7 @@ fun InsightsScreen(
                         Box(contentAlignment = Alignment.Center) {
                             DonutChart(
                                 entries = breakdown.map {
-                                    categoryColor(it.category?.colorHex ?: "#948B7A") to it.spent
+                                    categoryColor(it.category?.colorHex ?: "#64748B") to it.spent
                                 },
                                 total = state.spent,
                                 modifier = Modifier.size(180.dp)
@@ -202,7 +202,7 @@ private fun Summary(
 @Composable
 private fun CategoryLegendRow(entry: CategorySpend, total: Long, index: Int) {
     val colors = LocalReserveColors.current
-    val accent = categoryColor(entry.category?.colorHex ?: "#948B7A")
+    val accent = categoryColor(entry.category?.colorHex ?: "#64748B")
     val share = if (total <= 0L) 0 else (entry.spent * 100L / total).toInt()
     Row(
         modifier = Modifier

@@ -171,7 +171,7 @@ private fun CategoryEditorDialog(
     var type by remember {
         mutableStateOf(existing?.type ?: TransactionType.EXPENSE)
     }
-    var colorHex by remember { mutableStateOf(existing?.colorHex ?: "#5C947F") }
+    var colorHex by remember { mutableStateOf(existing?.colorHex ?: "#10B981") }
     var iconName by remember { mutableStateOf(existing?.iconName ?: "other") }
     var confirmDelete by remember { mutableStateOf(false) }
 

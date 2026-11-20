@@ -13,15 +13,10 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 
-private val darkAccentVariants = mapOf(
-    "#C98A00" to "#F5B82E", // Sovereign Gold → Luminous Amber
-    "#08C225" to "#069D1E"  // Ente Green → deeper green
-)
-
 @Composable
 fun ReserveTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
-    primaryColorHex: String = "#C98A00",
+    primaryColorHex: String = "#00B843",
     amountsHidden: Boolean = false,
     content: @Composable () -> Unit
 ) {
@@ -39,10 +34,8 @@ fun ReserveTheme(
         }
     }
     val baseColors = if (darkTheme) ReserveDarkColors else ReserveLightColors
-    val cleanHex = if (primaryColorHex.startsWith("#")) primaryColorHex else "#$primaryColorHex"
-    // Presets can define a luminous dark-mode sibling (Sovereign Gold → Amber,
-    // Ente Green → its deeper shade). Custom hexes are used as-is in both modes.
-    val effectiveHex = if (darkTheme) darkAccentVariants[cleanHex] ?: cleanHex else cleanHex
+    // Presets have a luminous dark-mode sibling; legacy and custom hexes are normalised centrally.
+    val effectiveHex = resolveAccentHex(primaryColorHex, darkTheme)
     val dynamicPrimary = runCatching { Color(android.graphics.Color.parseColor(effectiveHex)) }.getOrNull() ?: baseColors.primaryDefault
     val colors = baseColors.copy(primaryDefault = dynamicPrimary)
 

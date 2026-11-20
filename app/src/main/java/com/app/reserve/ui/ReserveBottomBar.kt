@@ -10,8 +10,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.wrapContentWidth
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Home
@@ -31,8 +30,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
-import com.app.reserve.core.designsystem.EnteRadius
-import com.app.reserve.core.designsystem.EnteSpacing
 import com.app.reserve.core.designsystem.LocalReserveColors
 
 enum class BottomDestination(
@@ -57,25 +54,29 @@ fun ReserveBottomBar(
     val colors = LocalReserveColors.current
     Surface(
         modifier = modifier
+            .fillMaxWidth()
             .navigationBarsPadding()
-            .padding(horizontal = 32.dp, vertical = 14.dp)
-            .wrapContentWidth(),
-        shape = RoundedCornerShape(24.dp),
+            .padding(horizontal = 16.dp, vertical = 14.dp)
+            .height(68.dp),
+        shape = RoundedCornerShape(26.dp),
         color = colors.surface,
         border = androidx.compose.foundation.BorderStroke(1.dp, colors.strokeFaint),
         shadowElevation = 0.dp,
         tonalElevation = 0.dp
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = EnteSpacing.sm, vertical = EnteSpacing.sm),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(EnteSpacing.xs)
+            horizontalArrangement = Arrangement.SpaceEvenly
         ) {
             BottomDestination.entries.forEachIndexed { index, destination ->
                 val selected = selectedIndex == index
                 Box(
                     modifier = Modifier
-                        .size(44.dp)
+                        .width(48.dp)
+                        .height(44.dp)
                         .clip(RoundedCornerShape(14.dp))
                         .background(if (selected) colors.fillLight else Color.Transparent)
                         .clickable { onSelectIndex(index) },
@@ -85,7 +86,7 @@ fun ReserveBottomBar(
                         imageVector = if (selected) destination.selectedIcon else destination.icon,
                         contentDescription = destination.label,
                         tint = if (selected) colors.textBase else colors.textLight,
-                        modifier = Modifier.size(22.dp)
+                        modifier = Modifier.height(22.dp).width(22.dp)
                     )
                 }
             }

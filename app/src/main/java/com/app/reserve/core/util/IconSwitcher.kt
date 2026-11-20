@@ -7,10 +7,12 @@ import android.content.pm.PackageManager
 object IconSwitcher {
 
     const val DEFAULT_ALIAS = "com.app.reserve.MainActivityDefault"
+    const val GLASSY_ALIAS = "com.app.reserve.MainActivityGlassy"
     const val MONOCHROME_ALIAS = "com.app.reserve.MainActivityMonochrome"
 
     val aliases = listOf(
         DEFAULT_ALIAS,
+        GLASSY_ALIAS,
         MONOCHROME_ALIAS
     )
 

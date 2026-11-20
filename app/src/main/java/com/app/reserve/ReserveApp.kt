@@ -175,7 +175,7 @@ fun ReserveApp(
 
     ReserveTheme(
         darkTheme = darkTheme,
-        primaryColorHex = settings?.primaryColorHex ?: "#C98A00",
+        primaryColorHex = settings?.primaryColorHex ?: "#00B843",
         amountsHidden = settings?.hideAmounts == true
     ) {
         val colors = LocalReserveColors.current
