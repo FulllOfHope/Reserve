@@ -13,26 +13,34 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Surface
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ReceiptLong
+import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material.icons.rounded.Visibility
 import androidx.compose.material.icons.rounded.VisibilityOff
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.app.reserve.core.database.AccountEntity
 import com.app.reserve.core.database.TransactionEntity
 import com.app.reserve.core.designsystem.BudgetBar
 import com.app.reserve.core.designsystem.CategoryChip
@@ -69,6 +77,7 @@ fun HomeScreen(
     onOpenMenu: () -> Unit,
     onNextMonth: () -> Unit,
     onToggleHideAmounts: (Boolean) -> Unit = {},
+    onChooseBalanceAccounts: (Set<String>?) -> Unit = {},
     onSetCategory: (TransactionEntity, String) -> Unit = { _, _ -> }
 ) {
     val colors = LocalReserveColors.current
@@ -77,6 +86,7 @@ fun HomeScreen(
     val budgets = state.monthBudgets
     var activeActionSheetTransaction by remember { mutableStateOf<TransactionEntity?>(null) }
     var categoryPickerTransaction by remember { mutableStateOf<TransactionEntity?>(null) }
+    var showBalanceAccounts by remember { mutableStateOf(false) }
 
     Column(modifier = Modifier.fillMaxSize()) {
         MonthSwitcher(
@@ -126,7 +136,7 @@ fun HomeScreen(
                                 Text(
                                     text = buildString {
                                         append(Dates.monthLabel(state.monthYear))
-                                        val accounts = state.activeAccounts.size
+                                        val accounts = state.balanceAccounts.size
                                         if (accounts > 0) {
                                             append(" · ")
                                             append(accounts)
@@ -136,6 +146,16 @@ fun HomeScreen(
                                     style = MaterialTheme.typography.bodySmall,
                                     color = colors.textLight,
                                     textAlign = TextAlign.Center
+                                )
+                            }
+                            IconButton(
+                                onClick = { showBalanceAccounts = true },
+                                modifier = Modifier.align(Alignment.TopStart)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.Tune,
+                                    contentDescription = "Choose balance accounts",
+                                    tint = colors.textLight
                                 )
                             }
                             IconButton(
@@ -273,6 +293,7 @@ fun HomeScreen(
                         TransactionRow(
                             transaction = transaction,
                             category = state.categoryFor(transaction.categoryId),
+                            accountName = state.accountName(transaction.accountId),
                             onClick = { activeActionSheetTransaction = transaction }
                         )
                         if (transaction != recent.last()) {
@@ -309,6 +330,162 @@ fun HomeScreen(
             },
             onDismiss = { categoryPickerTransaction = null }
         )
+    }
+
+    if (showBalanceAccounts) {
+        BalanceAccountsSheet(
+            accounts = state.activeAccounts,
+            selectedIds = state.balanceAccountIds,
+            onApply = { ids ->
+                onChooseBalanceAccounts(ids)
+                showBalanceAccounts = false
+            },
+            onDismiss = { showBalanceAccounts = false }
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun BalanceAccountsSheet(
+    accounts: List<AccountEntity>,
+    selectedIds: Set<String>?,
+    onApply: (Set<String>?) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val colors = LocalReserveColors.current
+    var useAll by remember(selectedIds) { mutableStateOf(selectedIds == null) }
+    var chosen by remember(selectedIds) {
+        mutableStateOf(selectedIds ?: accounts.map { it.id }.toSet())
+    }
+
+    fun toggleAccount(id: String) {
+        if (useAll) {
+            useAll = false
+            chosen = setOf(id)
+        } else {
+            chosen = if (id in chosen) chosen - id else chosen + id
+        }
+    }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = colors.surface,
+        contentWindowInsets = { WindowInsets.ime },
+        shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
+        tonalElevation = 0.dp
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 24.dp)
+                .padding(bottom = 24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            SheetHandle()
+            Spacer(Modifier.height(20.dp))
+            Text(
+                text = "Accounts in balance",
+                style = MaterialTheme.typography.titleMedium,
+                color = colors.textBase,
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(Modifier.height(6.dp))
+            Text(
+                text = "Choose which accounts are combined into Current balance.",
+                style = MaterialTheme.typography.bodySmall,
+                color = colors.textLight,
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(Modifier.height(16.dp))
+
+            Surface(
+                onClick = { useAll = true },
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(14.dp),
+                color = if (useAll) colors.primaryContainer else colors.fillLight,
+                border = BorderStroke(1.dp, if (useAll) colors.primaryDefault else colors.strokeFaint)
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Checkbox(
+                        checked = useAll,
+                        onCheckedChange = { useAll = true },
+                        colors = CheckboxDefaults.colors(
+                            checkedColor = colors.primaryDefault,
+                            uncheckedColor = colors.textLighter,
+                            checkmarkColor = colors.textReverse
+                        )
+                    )
+                    Text(
+                        text = "All accounts",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = colors.textBase
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(12.dp))
+            if (accounts.isEmpty()) {
+                Text(
+                    text = "No active accounts yet.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = colors.textLighter,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+            accounts.forEach { account ->
+                val accountSelected = !useAll && account.id in chosen
+                Surface(
+                    onClick = { toggleAccount(account.id) },
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                    shape = RoundedCornerShape(14.dp),
+                    color = colors.fillLight
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Checkbox(
+                            checked = accountSelected,
+                            onCheckedChange = { toggleAccount(account.id) },
+                            colors = CheckboxDefaults.colors(
+                                checkedColor = colors.primaryDefault,
+                                uncheckedColor = colors.textLighter,
+                                checkmarkColor = colors.textReverse
+                            )
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            text = account.name,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = colors.textBase,
+                            modifier = Modifier.weight(1f)
+                        )
+                        MoneyText(
+                            amount = account.balance,
+                            style = MaterialTheme.typography.labelMedium.tabular(),
+                            color = colors.textLight
+                        )
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(20.dp))
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                TextButton(
+                    onClick = {
+                        val validIds = accounts.map { it.id }.toSet()
+                        onApply(if (useAll) null else chosen.intersect(validIds))
+                    }
+                ) {
+                    Text("Done", color = colors.primaryDefault)
+                }
+            }
+        }
     }
 }
 

@@ -8,6 +8,7 @@ import com.app.reserve.core.database.BudgetEntity
 import com.app.reserve.core.database.CategoryEntity
 import com.app.reserve.core.database.RecurringEntity
 import com.app.reserve.core.database.TransactionEntity
+import com.app.reserve.core.datastore.SettingsDataStore
 import com.app.reserve.core.domain.BackupManager
 import com.app.reserve.core.domain.BudgetCalculator
 import com.app.reserve.core.domain.CsvManager
@@ -30,7 +31,9 @@ data class LedgerState(
     val accounts: List<AccountEntity> = emptyList(),
     val budgets: List<BudgetEntity> = emptyList(),
     val recurring: List<RecurringEntity> = emptyList(),
-    val pendingDeletes: Set<String> = emptySet()
+    val pendingDeletes: Set<String> = emptySet(),
+    /** Null means all active accounts; an explicit set can be empty. */
+    val balanceAccountIds: Set<String>? = null
 ) {
     val visibleTransactions: List<TransactionEntity>
         get() = transactions.filterNot { it.id in pendingDeletes }
@@ -46,6 +49,12 @@ data class LedgerState(
 
     val activeAccounts: List<AccountEntity> get() = accounts.filterNot { it.isArchived }
 
+    /** Accounts whose balances make up the Home hero figure. */
+    val balanceAccounts: List<AccountEntity>
+        get() = activeAccounts.filter { account ->
+            balanceAccountIds == null || account.id in balanceAccountIds
+        }
+
     val monthBudgets: List<BudgetEntity> get() = budgets.filter { it.monthYear == monthYear }
 
     fun accountName(id: String?): String =
@@ -57,10 +66,13 @@ data class LedgerState(
     fun expensesFor(type: com.app.reserve.core.database.TransactionType): List<CategoryEntity> =
         categories.filter { it.type == type }
 
-    val totalBalance: Long get() = activeAccounts.sumOf { it.balance }
+    val totalBalance: Long get() = balanceAccounts.sumOf { it.balance }
 }
 
-class LedgerViewModel(private val repository: ReserveRepository) : ViewModel() {
+class LedgerViewModel(
+    private val repository: ReserveRepository,
+    private val settingsDataStore: SettingsDataStore
+) : ViewModel() {
 
     private val selectedMonth = MutableStateFlow(Dates.currentMonthKey())
     private val pendingDeletes = MutableStateFlow<Set<String>>(emptySet())
@@ -87,8 +99,9 @@ class LedgerViewModel(private val repository: ReserveRepository) : ViewModel() {
         bundle,
         selectedMonth,
         pendingDeletes,
-        repository.trashedTransactions
-    ) { data, monthYear, pending, trashed ->
+        repository.trashedTransactions,
+        settingsDataStore.settings
+    ) { data, monthYear, pending, trashed, settings ->
         LedgerState(
             loading = false,
             monthYear = monthYear,
@@ -98,7 +111,8 @@ class LedgerViewModel(private val repository: ReserveRepository) : ViewModel() {
             accounts = data.accounts,
             budgets = data.budgets,
             recurring = data.recurring,
-            pendingDeletes = pending
+            pendingDeletes = pending,
+            balanceAccountIds = settings.balanceAccountIds
         )
     }.stateIn(
         viewModelScope,
@@ -184,6 +198,14 @@ class LedgerViewModel(private val repository: ReserveRepository) : ViewModel() {
 
     fun restoreAccount(account: AccountEntity) {
         viewModelScope.launch { repository.restoreAccount(account) }
+    }
+
+    /** Null = all active accounts; an explicit (possibly empty) set is respected. */
+    fun setBalanceAccountIds(ids: Set<String>?, onSaved: () -> Unit = {}) {
+        viewModelScope.launch {
+            settingsDataStore.setBalanceAccountIds(ids)
+            onSaved()
+        }
     }
 
     // -- Budgets ------------------------------------------------------------

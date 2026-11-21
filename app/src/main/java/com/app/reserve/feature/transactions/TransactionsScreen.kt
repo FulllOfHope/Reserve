@@ -8,9 +8,11 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -22,19 +24,23 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.DeleteOutline
+import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.ReceiptLong
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.SearchOff
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
 import androidx.compose.material3.SwipeToDismissBox
 import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -45,6 +51,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
@@ -58,6 +65,7 @@ import com.app.reserve.core.designsystem.LocalAmountsHidden
 import com.app.reserve.core.designsystem.LocalReserveColors
 import com.app.reserve.core.designsystem.MonthSwitcher
 import com.app.reserve.core.designsystem.ReserveDivider
+import com.app.reserve.core.designsystem.SheetHandle
 import com.app.reserve.core.designsystem.TransactionRow
 import com.app.reserve.core.designsystem.formatMoney
 import com.app.reserve.core.domain.Dates
@@ -71,6 +79,9 @@ private enum class TypeFilter(val label: String, val type: TransactionType?) {
     Transfer("Transfers", TransactionType.TRANSFER)
 }
 
+/** Null id = all categories, empty id = uncategorised rows. */
+private data class CategoryFilter(val id: String?, val label: String)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TransactionsScreen(
@@ -83,9 +94,25 @@ fun TransactionsScreen(
     val colors = LocalReserveColors.current
     var query by remember { mutableStateOf("") }
     var filter by remember { mutableStateOf(TypeFilter.All) }
+    var selectedCategory by remember { mutableStateOf<CategoryFilter?>(null) }
+    var showCategorySheet by remember { mutableStateOf(false) }
+
+    val categoryOptions = remember(state.categories) {
+        listOf(CategoryFilter(null, "All categories")) +
+            state.categories.map { CategoryFilter(it.id, it.name) } +
+            CategoryFilter("", "Uncategorized")
+    }
+    val categoryId = selectedCategory?.id
 
     val filtered = state.monthTransactions
         .filter { filter.type == null || it.type == filter.type }
+        .filter { transaction ->
+            when {
+                categoryId == null -> true
+                categoryId.isEmpty() -> transaction.categoryId == null
+                else -> transaction.categoryId == categoryId
+            }
+        }
         .filter { transaction ->
             if (query.isBlank()) return@filter true
             val needle = query.trim()
@@ -112,6 +139,41 @@ fun TransactionsScreen(
             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
+            item {
+                FilterChip(
+                    selected = selectedCategory != null,
+                    onClick = { showCategorySheet = true },
+                    label = {
+                        Text(
+                            text = selectedCategory?.label ?: "Category",
+                            style = MaterialTheme.typography.labelLarge.copy(
+                                fontWeight = if (selectedCategory != null) FontWeight.Bold else FontWeight.Medium
+                            ),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    },
+                    trailingIcon = {
+                        Icon(
+                            imageVector = Icons.Rounded.KeyboardArrowDown,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    },
+                    colors = FilterChipDefaults.filterChipColors(
+                        containerColor = colors.surface,
+                        labelColor = colors.textLight,
+                        selectedContainerColor = colors.primaryContainer,
+                        selectedLabelColor = colors.primaryDefault
+                    ),
+                    border = FilterChipDefaults.filterChipBorder(
+                        enabled = true,
+                        selected = selectedCategory != null,
+                        borderColor = colors.strokeFaint,
+                        selectedBorderColor = colors.primaryDefault
+                    )
+                )
+            }
             items(TypeFilter.entries) { option ->
                 val selected = filter == option
                 FilterChip(
@@ -176,6 +238,86 @@ fun TransactionsScreen(
                         )
                     }
                 }
+            }
+        }
+    }
+
+    if (showCategorySheet) {
+        CategoryFilterSheet(
+            options = categoryOptions,
+            selected = selectedCategory,
+            onSelect = { option ->
+                selectedCategory = if (option.id == null) null else option
+                showCategorySheet = false
+            },
+            onDismiss = { showCategorySheet = false }
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CategoryFilterSheet(
+    options: List<CategoryFilter>,
+    selected: CategoryFilter?,
+    onSelect: (CategoryFilter) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val colors = LocalReserveColors.current
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = colors.surface,
+        contentWindowInsets = { WindowInsets.ime },
+        shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
+        tonalElevation = 0.dp
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp)
+                .padding(bottom = 24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            SheetHandle()
+            Spacer(Modifier.height(20.dp))
+            Text(
+                text = "Filter by category",
+                style = MaterialTheme.typography.titleMedium,
+                color = colors.textBase,
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(Modifier.height(16.dp))
+            options.chunked(2).forEach { row ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    row.forEach { option ->
+                        val isSelected = selected?.id == option.id
+                        Surface(
+                            onClick = { onSelect(option) },
+                            modifier = Modifier.weight(1f).height(48.dp),
+                            shape = RoundedCornerShape(12.dp),
+                            color = if (isSelected) colors.primaryContainer else colors.fillLight,
+                            border = BorderStroke(
+                                1.dp,
+                                if (isSelected) colors.primaryDefault else colors.strokeFaint
+                            )
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Text(
+                                    text = option.label,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = if (isSelected) colors.primaryDefault else colors.textBase,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                    }
+                    if (row.size == 1) Spacer(Modifier.weight(1f))
+                }
+                Spacer(Modifier.height(8.dp))
             }
         }
     }
@@ -278,16 +420,21 @@ private fun SwipeRow(
 ) {
     val colors = LocalReserveColors.current
     val haptic = LocalHapticFeedback.current
+    val density = LocalDensity.current
+    var confirmDelete by remember { mutableStateOf(false) }
 
+    // A tab swipe should not delete a row. Require a long deliberate drag, and
+    // still ask before moving anything to Trash.
     val dismissState = rememberSwipeToDismissBoxState(
         confirmValueChange = { value ->
-            if (value == SwipeToDismissBoxValue.EndToStart) {
+            if (value == SwipeToDismissBoxValue.EndToStart && !confirmDelete) {
                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                onDelete()
-                true
-            } else {
-                false
+                confirmDelete = true
             }
+            false
+        },
+        positionalThreshold = { totalDistance ->
+            (totalDistance * 0.7f).coerceAtLeast(with(density) { 120.dp.toPx() })
         }
     )
 
@@ -322,10 +469,37 @@ private fun SwipeRow(
                 TransactionRow(
                     transaction = transaction,
                     category = state.categoryFor(transaction.categoryId),
+                    accountName = state.accountName(transaction.accountId),
                     onClick = onEdit
                 )
                 ReserveDivider()
             }
         }
+    }
+
+    if (confirmDelete) {
+        AlertDialog(
+            onDismissRequest = { confirmDelete = false },
+            containerColor = colors.fillLight,
+            titleContentColor = colors.textBase,
+            textContentColor = colors.textLight,
+            title = { Text("Move to Trash?") },
+            text = { Text("You can restore this transaction from Trash until it is permanently removed.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        confirmDelete = false
+                        onDelete()
+                    }
+                ) {
+                    Text("Move to Trash", color = colors.warningDefault)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmDelete = false }) {
+                    Text("Cancel", color = colors.textLight)
+                }
+            }
+        )
     }
 }

@@ -135,7 +135,12 @@ fun ReserveApp(
 
     val ledgerViewModel: LedgerViewModel = viewModel(
         factory = viewModelFactory {
-            initializer { LedgerViewModel(application.container.repository) }
+            initializer {
+                LedgerViewModel(
+                    repository = application.container.repository,
+                    settingsDataStore = application.container.settings
+                )
+            }
         }
     )
     val settingsViewModel: SettingsViewModel = viewModel(
@@ -442,6 +447,12 @@ private fun MainNavigation(
         }
     }
 
+    val onChooseBalanceAccounts: (Set<String>?) -> Unit = { ids ->
+        ledgerViewModel.setBalanceAccountIds(ids) {
+            scope.launch { ReserveWidget().updateAll(context) }
+        }
+    }
+
     val onDelete: (TransactionEntity) -> Unit = { transaction ->
         // Soft-delete first: the row leaves the ledger and its balance reverses
         // immediately, but a Undo tap can still bring it back exactly as it was.
@@ -721,6 +732,7 @@ private fun MainNavigation(
                                         onNextMonth = { ledgerViewModel.shiftMonth(1) },
                                         onOpenMenu = { scope.launch { drawerState.open() } },
                                         onToggleHideAmounts = onToggleHideAmounts,
+                                        onChooseBalanceAccounts = onChooseBalanceAccounts,
                                         onSetCategory = { transaction, categoryId ->
                                             ledgerViewModel.setTransactionCategory(transaction, categoryId)
                                         }

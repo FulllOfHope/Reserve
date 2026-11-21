@@ -2,25 +2,40 @@ package com.app.reserve.feature.insights
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.PieChart
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
@@ -31,6 +46,8 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlin.math.pow
+import com.app.reserve.core.database.TransactionEntity
+import com.app.reserve.core.database.TransactionType
 import com.app.reserve.core.designsystem.EmptyState
 import com.app.reserve.core.designsystem.HiddenAmount
 import com.app.reserve.core.designsystem.LocalAmountsHidden
@@ -38,7 +55,10 @@ import com.app.reserve.core.designsystem.LocalReserveColors
 import com.app.reserve.core.designsystem.MoneyText
 import com.app.reserve.core.designsystem.MonthSwitcher
 import com.app.reserve.core.designsystem.ReserveCard
+import com.app.reserve.core.designsystem.ReserveDivider
 import com.app.reserve.core.designsystem.SectionLabel
+import com.app.reserve.core.designsystem.SheetHandle
+import com.app.reserve.core.designsystem.TransactionRow
 import com.app.reserve.core.designsystem.categoryColor
 import com.app.reserve.core.designsystem.tabular
 import com.app.reserve.core.domain.BudgetCalculator
@@ -47,6 +67,7 @@ import com.app.reserve.core.domain.Money
 import androidx.compose.ui.text.drawText
 import com.app.reserve.feature.ledger.LedgerState
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun InsightsScreen(
     state: LedgerState,
@@ -60,6 +81,7 @@ fun InsightsScreen(
         state.monthYear,
         state.categories
     ).filter { it.spent > 0 }
+    var selectedCategory by remember { mutableStateOf<CategorySpend?>(null) }
 
     Column(modifier = Modifier.fillMaxSize()) {
         MonthSwitcher(
@@ -137,7 +159,8 @@ fun InsightsScreen(
                 CategoryLegendRow(
                     entry = entry,
                     total = state.spent,
-                    index = index
+                    index = index,
+                    onClick = { selectedCategory = entry }
                 )
             }
 
@@ -174,6 +197,87 @@ fun InsightsScreen(
             }
         }
     }
+
+    selectedCategory?.let { entry ->
+        val expenses = state.monthTransactions
+            .filter { it.type == TransactionType.EXPENSE && it.categoryId == entry.categoryId }
+            .sortedByDescending { it.timestamp }
+        CategoryExpensesSheet(
+            entry = entry,
+            expenses = expenses,
+            state = state,
+            onDismiss = { selectedCategory = null }
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CategoryExpensesSheet(
+    entry: CategorySpend,
+    expenses: List<TransactionEntity>,
+    state: LedgerState,
+    onDismiss: () -> Unit
+) {
+    val colors = LocalReserveColors.current
+    val title = entry.category?.name ?: "Uncategorized"
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = colors.surface,
+        contentWindowInsets = { WindowInsets.ime },
+        shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
+        tonalElevation = 0.dp
+    ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                SheetHandle()
+                Spacer(Modifier.height(16.dp))
+                Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = title,
+                            style = MaterialTheme.typography.titleMedium,
+                            color = colors.textBase
+                        )
+                        Text(
+                            text = "${expenses.size} ${if (expenses.size == 1) "expense" else "expenses"}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = colors.textLight
+                        )
+                    }
+                    MoneyText(
+                        amount = entry.spent,
+                        style = MaterialTheme.typography.titleMedium.tabular(),
+                        color = colors.textBase
+                    )
+                    IconButton(onClick = onDismiss) {
+                        Icon(
+                            imageVector = Icons.Rounded.Close,
+                            contentDescription = "Close",
+                            tint = colors.textLight
+                        )
+                    }
+                }
+                Spacer(Modifier.height(12.dp))
+            }
+            LazyColumn(modifier = Modifier.fillMaxWidth()) {
+                items(items = expenses, key = { it.id }) { transaction ->
+                    TransactionRow(
+                        transaction = transaction,
+                        category = state.categoryFor(transaction.categoryId),
+                        accountName = state.accountName(transaction.accountId),
+                        onClick = {}
+                    )
+                    ReserveDivider()
+                }
+            }
+        }
+    }
 }
 
 @Composable
@@ -200,14 +304,22 @@ private fun Summary(
 }
 
 @Composable
-private fun CategoryLegendRow(entry: CategorySpend, total: Long, index: Int) {
+private fun CategoryLegendRow(
+    entry: CategorySpend,
+    total: Long,
+    index: Int,
+    onClick: () -> Unit
+) {
     val colors = LocalReserveColors.current
     val accent = categoryColor(entry.category?.colorHex ?: "#64748B")
     val share = if (total <= 0L) 0 else (entry.spent * 100L / total).toInt()
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 10.dp),
+            .padding(horizontal = 16.dp, vertical = 6.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 8.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(

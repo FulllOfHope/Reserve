@@ -8,6 +8,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.app.reserve.core.util.IconSwitcher
 import kotlinx.coroutines.flow.Flow
@@ -32,7 +33,9 @@ data class ReserveSettings(
     /** Privacy-first GitHub Releases check for new app versions. */
     val updateChecksEnabled: Boolean = true,
     val lastUpdateCheckAt: Long = 0L,
-    val dismissedUpdateVersion: String = ""
+    val dismissedUpdateVersion: String = "",
+    /** Null means combine every non-archived account; an empty set means none. */
+    val balanceAccountIds: Set<String>? = null
 )
 
 class SettingsDataStore(private val context: Context) {
@@ -50,6 +53,7 @@ class SettingsDataStore(private val context: Context) {
         val UPDATE_CHECKS_ENABLED = booleanPreferencesKey("update_checks_enabled")
         val LAST_UPDATE_CHECK_AT = longPreferencesKey("last_update_check_at")
         val DISMISSED_UPDATE_VERSION = stringPreferencesKey("dismissed_update_version")
+        val BALANCE_ACCOUNT_IDS = stringSetPreferencesKey("balance_account_ids")
     }
 
     val settings: Flow<ReserveSettings> = context.reserveDataStore.data.map { preferences ->
@@ -67,7 +71,8 @@ class SettingsDataStore(private val context: Context) {
             ledgerRepairedV3 = preferences[LEDGER_REPAIRED_V3] ?: false,
             updateChecksEnabled = preferences[UPDATE_CHECKS_ENABLED] ?: true,
             lastUpdateCheckAt = preferences[LAST_UPDATE_CHECK_AT] ?: 0L,
-            dismissedUpdateVersion = preferences[DISMISSED_UPDATE_VERSION] ?: ""
+            dismissedUpdateVersion = preferences[DISMISSED_UPDATE_VERSION] ?: "",
+            balanceAccountIds = preferences[BALANCE_ACCOUNT_IDS]
         )
     }
 
@@ -133,6 +138,17 @@ class SettingsDataStore(private val context: Context) {
 
     suspend fun setDismissedUpdateVersion(version: String) {
         context.reserveDataStore.edit { it[DISMISSED_UPDATE_VERSION] = version }
+    }
+
+    /** Null restores the default "all active accounts" behaviour. */
+    suspend fun setBalanceAccountIds(ids: Set<String>?) {
+        context.reserveDataStore.edit { preferences ->
+            if (ids == null) {
+                preferences.remove(BALANCE_ACCOUNT_IDS)
+            } else {
+                preferences[BALANCE_ACCOUNT_IDS] = ids
+            }
+        }
     }
 
     /** One-shot read used by the background scanner. */

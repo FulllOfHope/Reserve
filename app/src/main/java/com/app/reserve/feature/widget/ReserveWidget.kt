@@ -122,8 +122,10 @@ class ReserveWidget : GlanceAppWidget() {
                         Dates.monthKey(Dates.toLocalDate(it.timestamp)) == monthKey
                 }
                 .sumOf { it.amount }
+            val selectedAccountIds = settings?.balanceAccountIds
             val balance = database.accountDao().getAll()
                 .filterNot { it.isArchived }
+                .filter { selectedAccountIds == null || it.id in selectedAccountIds }
                 .sumOf { it.balance }
             WidgetFigures(balance = balance, spent = spent, income = income)
         }.getOrDefault(WidgetFigures())

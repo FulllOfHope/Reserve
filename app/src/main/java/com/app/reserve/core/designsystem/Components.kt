@@ -236,7 +236,8 @@ fun TransactionRow(
     transaction: TransactionEntity,
     category: CategoryEntity?,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    accountName: String? = null
 ) {
     val colors = LocalReserveColors.current
     val note = transaction.note.trim()
@@ -246,19 +247,27 @@ fun TransactionRow(
     } else {
         ""
     }
+    val categoryLabel = category?.name
+        ?: if (transaction.type == TransactionType.TRANSFER) "Transfer" else null
+    val accountLabel = accountName?.trim().orEmpty()
+    val bankLabel = smsSource.ifBlank { accountLabel }
+    // Manual notes own the title; SMS notes carry the bank, so keep the
+    // category as their title and move the bank beside the date instead.
     val displayTitle = when {
-        smsSource.isNotBlank() -> category?.name
-            ?: if (transaction.type == TransactionType.TRANSFER) "Transfer" else "Transaction"
+        note.isNotBlank() && smsSource.isBlank() -> note
+        categoryLabel != null -> categoryLabel
         note.isNotBlank() -> note
-        category != null -> category.name
-        transaction.type == TransactionType.TRANSFER -> "Transfer"
         else -> "Transaction"
     }
     val metadata = buildString {
-        append(Dates.fullDate(transaction.timestamp))
-        if (smsSource.isNotBlank()) {
+        if (displayTitle != categoryLabel && categoryLabel != null) {
+            append(categoryLabel)
             append(" · ")
-            append(smsSource)
+        }
+        append(Dates.fullDate(transaction.timestamp))
+        if (note.isNotBlank() && bankLabel.isNotBlank()) {
+            append(" · ")
+            append(bankLabel)
         }
     }
     Row(

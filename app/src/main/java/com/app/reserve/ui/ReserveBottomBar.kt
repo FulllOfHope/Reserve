@@ -3,6 +3,7 @@ package com.app.reserve.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -29,7 +30,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
+import kotlin.math.abs
 import com.app.reserve.core.designsystem.LocalReserveColors
 
 enum class BottomDestination(
@@ -55,6 +58,33 @@ fun ReserveBottomBar(
     Surface(
         modifier = modifier
             .fillMaxWidth()
+            .pointerInput(selectedIndex, onSelectIndex) {
+                val threshold = 48.dp.toPx()
+                var totalDrag = 0f
+                var handled = false
+                detectHorizontalDragGestures(
+                    onDragStart = {
+                        totalDrag = 0f
+                        handled = false
+                    },
+                    onDragEnd = {
+                        totalDrag = 0f
+                        handled = false
+                    },
+                    onDragCancel = {
+                        totalDrag = 0f
+                        handled = false
+                    }
+                ) { _, dragAmount ->
+                    if (handled) return@detectHorizontalDragGestures
+                    totalDrag += dragAmount
+                    if (abs(totalDrag) >= threshold) {
+                        val next = selectedIndex + if (totalDrag < 0f) 1 else -1
+                        onSelectIndex(next.coerceIn(0, BottomDestination.entries.lastIndex))
+                        handled = true
+                    }
+                }
+            }
             .navigationBarsPadding()
             .padding(horizontal = 16.dp, vertical = 14.dp)
             .height(68.dp),

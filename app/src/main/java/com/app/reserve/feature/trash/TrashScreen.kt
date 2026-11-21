@@ -139,6 +139,7 @@ fun TrashScreen(
                         TransactionRow(
                             transaction = transaction,
                             category = state.categoryFor(transaction.categoryId),
+                            accountName = state.accountName(transaction.accountId),
                             onClick = { selected = transaction }
                         )
                         TransactionRowCaption(deletedAt = transaction.deletedAt)
