@@ -25,6 +25,19 @@ import kotlinx.coroutines.sync.withLock
 /** Items in Trash are purged permanently after this long (30 days). */
 const val TRASH_RETENTION_MS = 30L * 24 * 60 * 60 * 1000
 
+const val DEFAULT_EXPENSE_CATEGORY_ID = "seed-uncategorized-expense"
+const val DEFAULT_INCOME_CATEGORY_ID = "seed-uncategorized-income"
+const val DEFAULT_TRANSFER_CATEGORY_ID = "seed-uncategorized-transfer"
+const val DEFAULT_EXPENSE_CATEGORY_NAME = "Unrecognized Expense"
+const val DEFAULT_INCOME_CATEGORY_NAME = "Unrecognized Income"
+const val DEFAULT_TRANSFER_CATEGORY_NAME = "Unrecognized Transfer"
+
+fun defaultCategoryName(type: TransactionType): String = when (type) {
+    TransactionType.EXPENSE -> DEFAULT_EXPENSE_CATEGORY_NAME
+    TransactionType.INCOME -> DEFAULT_INCOME_CATEGORY_NAME
+    TransactionType.TRANSFER -> DEFAULT_TRANSFER_CATEGORY_NAME
+}
+
 /**
  * All writes go through this repository so an account balance and its
  * transaction rows can never disagree. Money stays in Long minor units.
@@ -50,7 +63,32 @@ class ReserveRepository(private val database: ReserveDatabase) {
 
     suspend fun ensureSeeded() {
         if (categoryDao.getAll().isEmpty()) seedCategories()
+        reconcileDefaultCategories()
         if (accountDao.getAll().isEmpty()) seedAccounts()
+    }
+
+    /** Renames only the fixed default ids; user-named categories are left alone. */
+    private suspend fun reconcileDefaultCategories() {
+        listOf(
+            DEFAULT_EXPENSE_CATEGORY_ID to DEFAULT_EXPENSE_CATEGORY_NAME,
+            DEFAULT_INCOME_CATEGORY_ID to DEFAULT_INCOME_CATEGORY_NAME,
+            DEFAULT_TRANSFER_CATEGORY_ID to DEFAULT_TRANSFER_CATEGORY_NAME
+        ).forEach { (id, name) ->
+            val category = categoryDao.getById(id)
+            if (category == null && id == DEFAULT_TRANSFER_CATEGORY_ID) {
+                categoryDao.insert(
+                    CategoryEntity(
+                        id = id,
+                        name = name,
+                        colorHex = "#948B7A",
+                        iconName = "other",
+                        type = TransactionType.TRANSFER
+                    )
+                )
+            } else if (category != null && category.name == "Uncategorized") {
+                categoryDao.update(category.copy(name = name))
+            }
+        }
     }
 
     private suspend fun seedCategories() {
@@ -86,8 +124,9 @@ class ReserveRepository(private val database: ReserveDatabase) {
         }
         categoryDao.insertAll(
             expense + income + listOf(
-                CategoryEntity("seed-uncategorized-expense", "Uncategorized", "#948B7A", "other", TransactionType.EXPENSE),
-                CategoryEntity("seed-uncategorized-income", "Uncategorized", "#948B7A", "other", TransactionType.INCOME)
+                CategoryEntity(DEFAULT_EXPENSE_CATEGORY_ID, DEFAULT_EXPENSE_CATEGORY_NAME, "#948B7A", "other", TransactionType.EXPENSE),
+                CategoryEntity(DEFAULT_INCOME_CATEGORY_ID, DEFAULT_INCOME_CATEGORY_NAME, "#948B7A", "other", TransactionType.INCOME),
+                CategoryEntity(DEFAULT_TRANSFER_CATEGORY_ID, DEFAULT_TRANSFER_CATEGORY_NAME, "#948B7A", "other", TransactionType.TRANSFER)
             )
         )
     }
@@ -226,13 +265,19 @@ class ReserveRepository(private val database: ReserveDatabase) {
     }
 
     private suspend fun uncategorizedFor(type: TransactionType, excluding: String? = null): CategoryEntity {
+        val wantedName = defaultCategoryName(type)
+        val fixedId = when (type) {
+            TransactionType.EXPENSE -> DEFAULT_EXPENSE_CATEGORY_ID
+            TransactionType.INCOME -> DEFAULT_INCOME_CATEGORY_ID
+            TransactionType.TRANSFER -> DEFAULT_TRANSFER_CATEGORY_ID
+        }
         val existing = categoryDao.getAll().firstOrNull {
-            it.type == type && it.name == "Uncategorized" && it.id != excluding
+            it.type == type && it.name == wantedName && it.id != excluding
         }
         if (existing != null) return existing
         val created = CategoryEntity(
-            id = UUID.randomUUID().toString(),
-            name = "Uncategorized",
+            id = if (fixedId == excluding) UUID.randomUUID().toString() else fixedId,
+            name = wantedName,
             colorHex = "#948B7A",
             iconName = "other",
             type = type
@@ -402,6 +447,100 @@ class ReserveRepository(private val database: ReserveDatabase) {
         }
         return ImportSummary(imported, skipped)
     }
+
+    /** Smart-import path: dedupes and can attach transfer categories from the file. */
+    suspend fun importSmartTransactions(
+        rows: List<ImportedTransaction>,
+        defaultAccountId: String
+    ): ImportSummary {
+        var imported = 0
+        var skipped = 0
+        database.withTransaction {
+            val accountsById = accountDao.getAll().associateBy { it.id }
+            val categoriesById = categoryDao.getAll().associateBy { it.id }
+            val seen = transactionDao.getAll()
+                .filter { it.deletedAt == null }
+                .mapTo(mutableSetOf()) { transaction ->
+                    fingerprint(
+                        timestamp = transaction.timestamp,
+                        type = transaction.type,
+                        amountMinor = transaction.amount,
+                        note = transaction.note,
+                        accountName = accountsById[transaction.accountId]?.name
+                            ?.takeIf { it.isNotBlank() } ?: "Imported",
+                        targetName = accountsById[transaction.targetAccountId]?.name
+                            ?.takeIf { it.isNotBlank() }
+                            ?: if (transaction.type == TransactionType.TRANSFER) "Imported" else "",
+                        categoryName = categoriesById[transaction.categoryId.orEmpty()]?.name
+                            ?.takeIf { it.isNotBlank() } ?: defaultCategoryName(transaction.type)
+                    )
+                }
+            for (row in rows) {
+                try {
+                    if (!seen.add(
+                            fingerprint(
+                                timestamp = row.timestamp,
+                                type = row.type,
+                                amountMinor = row.amountMinor,
+                                note = row.note,
+                                accountName = row.accountName.ifBlank { "Imported" },
+                                targetName = if (row.type == TransactionType.TRANSFER) {
+                                    row.targetAccountName.ifBlank { row.accountName }.ifBlank { "Imported" }
+                                } else {
+                                    ""
+                                },
+                                categoryName = row.categoryName.ifBlank { defaultCategoryName(row.type) }
+                            )
+                        )
+                    ) {
+                        skipped++
+                        continue
+                    }
+                    val account = findOrCreateAccount(row.accountName, defaultAccountId)
+                    val category = findOrCreateCategory(row.categoryName, row.type)
+                    val target = if (row.type == TransactionType.TRANSFER) {
+                        findOrCreateAccount(row.targetAccountName.ifBlank { row.accountName }, defaultAccountId)
+                    } else {
+                        null
+                    }
+                    val transaction = TransactionEntity(
+                        id = UUID.randomUUID().toString(),
+                        amount = row.amountMinor,
+                        type = row.type,
+                        categoryId = category.id,
+                        accountId = account.id,
+                        targetAccountId = target?.id,
+                        timestamp = row.timestamp,
+                        note = row.note
+                    )
+                    applyBalance(transaction, reverse = false)
+                    transactionDao.insert(transaction)
+                    imported++
+                } catch (_: Exception) {
+                    skipped++
+                }
+            }
+        }
+        return ImportSummary(imported, skipped)
+    }
+
+    private fun fingerprint(
+        timestamp: Long,
+        type: TransactionType,
+        amountMinor: Long,
+        note: String,
+        accountName: String,
+        targetName: String,
+        categoryName: String
+    ): String = listOf(
+        (timestamp / 60_000L).toString(),
+        type.name,
+        amountMinor.toString(),
+        note.trim().lowercase(Locale.ROOT).replace(Regex("\\s+"), " "),
+        accountName.trim().lowercase(Locale.ROOT),
+        targetName.trim().lowercase(Locale.ROOT),
+        categoryName.trim().lowercase(Locale.ROOT)
+    ).joinToString("|")
 
     /**
      * Imports parsed SMS rows oldest-first. Each message is wrapped in its own
@@ -628,7 +767,7 @@ class ReserveRepository(private val database: ReserveDatabase) {
     }
 
     private suspend fun findOrCreateCategory(name: String, type: TransactionType): CategoryEntity {
-        val wanted = name.trim().ifBlank { "Uncategorized" }
+        val wanted = name.trim().ifBlank { defaultCategoryName(type) }
         categoryDao.getAll().firstOrNull {
             it.type == type && it.name.equals(wanted, ignoreCase = true)
         }?.let { return it }

@@ -28,7 +28,7 @@ Built with Kotlin, Jetpack Compose, Material 3, Room + SQLCipher, DataStore and 
 - 💰 Current balance front and centre on the dashboard, with the month's spend, income and net below it
 - 🙈 One-tap hide-amounts mode on the dashboard (also a Settings switch) that masks every balance and transaction amount, including the widget
 - 💸 Expenses, income and account-to-account transfers (transfers are net-zero and excluded from budgets)
-- 🏷️ Custom categories with colour + icon, safe re-parenting to *Uncategorized* on deletion
+- 🏷️ Custom categories with colour + icon, safe re-parenting to the matching *Unrecognized* category on deletion
 - 📊 Strict monthly budgets with no rollover, plus category donut and 6-month trend charts
 - 🔁 Recurring monthly rules that generate ordinary, editable transactions
 - 🔒 Optional biometric / device-credential app lock with a rotation-safe timeout

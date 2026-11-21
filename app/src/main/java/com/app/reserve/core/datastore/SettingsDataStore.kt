@@ -34,6 +34,11 @@ data class ReserveSettings(
     val updateChecksEnabled: Boolean = true,
     val lastUpdateCheckAt: Long = 0L,
     val dismissedUpdateVersion: String = "",
+    /** Reminder snooze is version-specific so a newer release can still notify. */
+    val snoozedUpdateVersion: String = "",
+    val snoozeUpdateReminderUntil: Long = 0L,
+    val pendingUpdateDownloadId: Long = -1L,
+    val pendingUpdateVersion: String = "",
     /** Null means combine every non-archived account; an empty set means none. */
     val balanceAccountIds: Set<String>? = null
 )
@@ -53,6 +58,10 @@ class SettingsDataStore(private val context: Context) {
         val UPDATE_CHECKS_ENABLED = booleanPreferencesKey("update_checks_enabled")
         val LAST_UPDATE_CHECK_AT = longPreferencesKey("last_update_check_at")
         val DISMISSED_UPDATE_VERSION = stringPreferencesKey("dismissed_update_version")
+        val SNOOZED_UPDATE_VERSION = stringPreferencesKey("snoozed_update_version")
+        val SNOOZE_UPDATE_REMINDER_UNTIL = longPreferencesKey("snooze_update_reminder_until")
+        val PENDING_UPDATE_DOWNLOAD_ID = longPreferencesKey("pending_update_download_id")
+        val PENDING_UPDATE_VERSION = stringPreferencesKey("pending_update_version")
         val BALANCE_ACCOUNT_IDS = stringSetPreferencesKey("balance_account_ids")
     }
 
@@ -72,6 +81,10 @@ class SettingsDataStore(private val context: Context) {
             updateChecksEnabled = preferences[UPDATE_CHECKS_ENABLED] ?: true,
             lastUpdateCheckAt = preferences[LAST_UPDATE_CHECK_AT] ?: 0L,
             dismissedUpdateVersion = preferences[DISMISSED_UPDATE_VERSION] ?: "",
+            snoozedUpdateVersion = preferences[SNOOZED_UPDATE_VERSION] ?: "",
+            snoozeUpdateReminderUntil = preferences[SNOOZE_UPDATE_REMINDER_UNTIL] ?: 0L,
+            pendingUpdateDownloadId = preferences[PENDING_UPDATE_DOWNLOAD_ID] ?: -1L,
+            pendingUpdateVersion = preferences[PENDING_UPDATE_VERSION] ?: "",
             balanceAccountIds = preferences[BALANCE_ACCOUNT_IDS]
         )
     }
@@ -138,6 +151,34 @@ class SettingsDataStore(private val context: Context) {
 
     suspend fun setDismissedUpdateVersion(version: String) {
         context.reserveDataStore.edit { it[DISMISSED_UPDATE_VERSION] = version }
+    }
+
+    suspend fun setUpdateReminderSnooze(version: String, until: Long) {
+        context.reserveDataStore.edit { preferences ->
+            preferences[SNOOZED_UPDATE_VERSION] = version
+            preferences[SNOOZE_UPDATE_REMINDER_UNTIL] = until
+        }
+    }
+
+    suspend fun clearUpdateReminderSnooze() {
+        context.reserveDataStore.edit { preferences ->
+            preferences.remove(SNOOZED_UPDATE_VERSION)
+            preferences.remove(SNOOZE_UPDATE_REMINDER_UNTIL)
+        }
+    }
+
+    suspend fun setPendingUpdateDownload(downloadId: Long, version: String) {
+        context.reserveDataStore.edit { preferences ->
+            preferences[PENDING_UPDATE_DOWNLOAD_ID] = downloadId
+            preferences[PENDING_UPDATE_VERSION] = version
+        }
+    }
+
+    suspend fun clearPendingUpdateDownload() {
+        context.reserveDataStore.edit { preferences ->
+            preferences.remove(PENDING_UPDATE_DOWNLOAD_ID)
+            preferences.remove(PENDING_UPDATE_VERSION)
+        }
     }
 
     /** Null restores the default "all active accounts" behaviour. */

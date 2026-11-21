@@ -24,6 +24,10 @@ class UpdateRepository(
     private val _needNotificationPermission = MutableStateFlow(false)
     val needNotificationPermission: StateFlow<Boolean> = _needNotificationPermission.asStateFlow()
 
+    /** True only for an automatic prompt, or for a deliberate manual check. */
+    private val _shouldShowSheet = MutableStateFlow(false)
+    val shouldShowSheet: StateFlow<Boolean> = _shouldShowSheet.asStateFlow()
+
     private var notifiedVersion: String? = null
 
     /** Called once from Application.onCreate; respects the 6-hour gate. */
@@ -52,13 +56,20 @@ class UpdateRepository(
             val now = System.currentTimeMillis()
             val found = withContext(Dispatchers.IO) { checker.checkForUpdate() }
             settings.setLastUpdateCheckAt(now)
-            if (found == null) return null
+            if (found == null) {
+                _shouldShowSheet.value = false
+                return null
+            }
 
             if (found.versionName.equals(before.dismissedUpdateVersion, ignoreCase = true)) {
                 _availableUpdate.value = null
+                _shouldShowSheet.value = false
                 return null
             }
             _availableUpdate.value = found
+
+            val snoozed = isSnoozed(before, found.versionName, now)
+            _shouldShowSheet.value = force || !snoozed
 
             val shouldNotify = UpdatePolicy.shouldNotify(
                 update = found,
@@ -68,7 +79,7 @@ class UpdateRepository(
                 now = now,
                 ignoreTimeGate = force
             )
-            if (notify && shouldNotify) {
+            if (notify && shouldNotify && !snoozed) {
                 notifiedVersion = found.versionName
                 if (!notifier.hasPermission()) {
                     _needNotificationPermission.value = true
@@ -93,9 +104,19 @@ class UpdateRepository(
         _availableUpdate.value?.let { notifier.show(it) }
     }
 
-    /** "Later" in the sheet: keep the version available, just hide the sheet. */
+    /** Hides the sheet without changing the reminder schedule. */
     fun dismiss() {
         _availableUpdate.value = null
+        _shouldShowSheet.value = false
+    }
+
+    /** "Remind me in a week": suppress automatic reminders for this version. */
+    suspend fun snoozeUpdate(version: String) {
+        settings.setUpdateReminderSnooze(version, System.currentTimeMillis() + SNOOZE_WEEK_MS)
+        notifier.cancel()
+        notifiedVersion = null
+        _availableUpdate.value = null
+        _shouldShowSheet.value = false
     }
 
     /** "Skip this version": never surface this version again. */
@@ -104,5 +125,18 @@ class UpdateRepository(
         settings.setDismissedUpdateVersion(version)
         notifier.cancel()
         _availableUpdate.value = null
+        _shouldShowSheet.value = false
+    }
+
+    private fun isSnoozed(
+        prefs: com.app.reserve.core.datastore.ReserveSettings,
+        version: String,
+        now: Long
+    ): Boolean =
+        prefs.snoozedUpdateVersion.equals(version, ignoreCase = true) &&
+            prefs.snoozeUpdateReminderUntil > now
+
+    companion object {
+        private const val SNOOZE_WEEK_MS = 7L * 24L * 60L * 60L * 1000L
     }
 }

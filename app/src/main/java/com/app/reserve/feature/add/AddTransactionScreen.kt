@@ -16,10 +16,12 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.ChevronLeft
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Close
@@ -50,6 +52,7 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.app.reserve.core.data.defaultCategoryName
 import com.app.reserve.core.database.AccountEntity
 import com.app.reserve.core.database.CategoryEntity
 import com.app.reserve.core.database.RecurringEntity
@@ -71,6 +74,7 @@ import com.app.reserve.core.designsystem.tabular
 import com.app.reserve.core.domain.AmountInput
 import com.app.reserve.core.domain.Dates
 import com.app.reserve.feature.ledger.LedgerState
+import com.app.reserve.feature.manage.CategoryEditorDialog
 import java.time.LocalDate
 import java.util.UUID
 
@@ -81,7 +85,8 @@ fun AddTransactionScreen(
     existing: TransactionEntity?,
     onClose: () -> Unit,
     onSave: (TransactionEntity, TransactionEntity?) -> Unit,
-    onCreateRecurring: (RecurringEntity) -> Unit
+    onCreateRecurring: (RecurringEntity) -> Unit,
+    onCreateCategory: (CategoryEntity) -> Unit
 ) {
     val colors = LocalReserveColors.current
     val focusManager = LocalFocusManager.current
@@ -103,12 +108,21 @@ fun AddTransactionScreen(
     var showAccountPicker by remember { mutableStateOf(false) }
     var showTargetPicker by remember { mutableStateOf(false) }
     var showDatePicker by remember { mutableStateOf(false) }
+    var showCategoryEditor by remember { mutableStateOf(false) }
+    var pendingCategoryId by remember { mutableStateOf<String?>(null) }
 
     val categories = state.categories.filter { it.type == type }
     LaunchedEffect(type, categories) {
-        if (type != TransactionType.TRANSFER && categories.none { it.id == categoryId }) {
-            categoryId = categories.firstOrNull { it.name != "Uncategorized" }?.id
+        if (categories.none { it.id == categoryId }) {
+            categoryId = categories.firstOrNull { it.name != defaultCategoryName(type) }?.id
                 ?: categories.firstOrNull()?.id
+        }
+    }
+    LaunchedEffect(categories, pendingCategoryId) {
+        val id = pendingCategoryId ?: return@LaunchedEffect
+        if (categories.any { it.id == id }) {
+            categoryId = id
+            pendingCategoryId = null
         }
     }
     LaunchedEffect(Unit) {
@@ -131,7 +145,7 @@ fun AddTransactionScreen(
         id = existing?.id ?: UUID.randomUUID().toString(),
         amount = amount.minor,
         type = type,
-        categoryId = if (type == TransactionType.TRANSFER) null else categoryId,
+        categoryId = categoryId,
         accountId = accountId!!,
         targetAccountId = if (type == TransactionType.TRANSFER) targetAccountId else null,
         timestamp = Dates.toTimestamp(date),
@@ -155,7 +169,7 @@ fun AddTransactionScreen(
                     id = UUID.randomUUID().toString(),
                     amount = amount.minor,
                     type = type,
-                    categoryId = if (type == TransactionType.TRANSFER) null else categoryId,
+                    categoryId = categoryId,
                     accountId = accountId!!,
                     targetAccountId = if (type == TransactionType.TRANSFER) targetAccountId else null,
                     note = note.trim(),
@@ -260,13 +274,16 @@ fun AddTransactionScreen(
                             onPickSource = { showAccountPicker = true },
                             onPickTarget = { showTargetPicker = true }
                         )
-                    } else {
-                        CategorySection(
-                            categories = categories,
-                            selectedId = categoryId,
-                            onSelect = { categoryId = it }
-                        )
                         Spacer(modifier = Modifier.height(12.dp))
+                    }
+                    CategorySection(
+                        categories = categories,
+                        selectedId = categoryId,
+                        onSelect = { categoryId = it },
+                        onCreate = { showCategoryEditor = true }
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    if (type != TransactionType.TRANSFER) {
                         FieldRow(
                             label = "Account",
                             value = state.accountName(accountId),
@@ -390,6 +407,21 @@ fun AddTransactionScreen(
                 showTargetPicker = false
             },
             onDismiss = { showTargetPicker = false }
+        )
+    }
+
+    if (showCategoryEditor) {
+        CategoryEditorDialog(
+            existing = null,
+            initialType = type,
+            allowedTypes = listOf(type),
+            onDismiss = { showCategoryEditor = false },
+            onSave = { created ->
+                onCreateCategory(created)
+                pendingCategoryId = created.id
+                showCategoryEditor = false
+            },
+            onDelete = {}
         )
     }
 }
@@ -542,13 +574,15 @@ private fun TypeSelector(
 private fun CategorySection(
     categories: List<CategoryEntity>,
     selectedId: String?,
-    onSelect: (String) -> Unit
+    onSelect: (String) -> Unit,
+    onCreate: () -> Unit
 ) {
+    val colors = LocalReserveColors.current
     Column {
         Text(
             text = "Category",
             style = MaterialTheme.typography.labelMedium,
-            color = LocalReserveColors.current.textLighter
+            color = colors.textLighter
         )
         Spacer(modifier = Modifier.height(8.dp))
         categories.chunked(2).forEach { row ->
@@ -569,6 +603,31 @@ private fun CategorySection(
                 }
             }
             Spacer(modifier = Modifier.height(8.dp))
+        }
+        Surface(
+            onClick = onCreate,
+            modifier = Modifier.fillMaxWidth().height(44.dp),
+            shape = RoundedCornerShape(radius_md),
+            color = colors.fillLight,
+            border = BorderStroke(1.dp, colors.strokeFaint)
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = spacing_md),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Add,
+                    contentDescription = null,
+                    tint = colors.primaryDefault,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(spacing_md))
+                Text(
+                    text = "New category",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = colors.primaryDefault
+                )
+            }
         }
     }
 }

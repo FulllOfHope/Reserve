@@ -20,12 +20,14 @@ class MainActivity : FragmentActivity() {
 
     private var openAddSheet by mutableStateOf(false)
     private var openUpdateSheet by mutableStateOf(false)
+    private var openInstallUpdate by mutableStateOf(false)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         openAddSheet = intent.getBooleanExtra(EXTRA_OPEN_ADD_SHEET, false)
         openUpdateSheet = intent.getBooleanExtra(EXTRA_OPEN_UPDATE_SHEET, false)
+        openInstallUpdate = intent.getBooleanExtra(EXTRA_OPEN_INSTALL_UPDATE, false)
         setContent {
             val repository = (application as ReserveApplication).container.updateRepository
             val needNotificationPermission by repository.needNotificationPermission
@@ -52,6 +54,11 @@ class MainActivity : FragmentActivity() {
                 onOpenUpdateSheetConsumed = {
                     intent.removeExtra(EXTRA_OPEN_UPDATE_SHEET)
                     openUpdateSheet = false
+                },
+                initialOpenInstallUpdate = openInstallUpdate,
+                onOpenInstallUpdateConsumed = {
+                    intent.removeExtra(EXTRA_OPEN_INSTALL_UPDATE)
+                    openInstallUpdate = false
                 }
             )
         }
@@ -63,10 +70,12 @@ class MainActivity : FragmentActivity() {
         setIntent(intent)
         openAddSheet = intent.getBooleanExtra(EXTRA_OPEN_ADD_SHEET, false)
         openUpdateSheet = intent.getBooleanExtra(EXTRA_OPEN_UPDATE_SHEET, false)
+        openInstallUpdate = intent.getBooleanExtra(EXTRA_OPEN_INSTALL_UPDATE, false)
     }
 
     companion object {
         const val EXTRA_OPEN_ADD_SHEET = "EXTRA_OPEN_ADD_SHEET"
         const val EXTRA_OPEN_UPDATE_SHEET = "EXTRA_OPEN_UPDATE_SHEET"
+        const val EXTRA_OPEN_INSTALL_UPDATE = "EXTRA_OPEN_INSTALL_UPDATE"
     }
 }

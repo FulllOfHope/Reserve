@@ -220,7 +220,7 @@ private fun CategoryExpensesSheet(
     onDismiss: () -> Unit
 ) {
     val colors = LocalReserveColors.current
-    val title = entry.category?.name ?: "Uncategorized"
+    val title = entry.category?.name ?: "No category"
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         containerColor = colors.surface,
@@ -329,7 +329,7 @@ private fun CategoryLegendRow(
         )
         Spacer(modifier = Modifier.width(12.dp))
         Text(
-            text = entry.category?.name ?: "Uncategorized",
+            text = entry.category?.name ?: "No category",
             style = MaterialTheme.typography.bodyMedium,
             color = colors.textBase,
             modifier = Modifier.weight(1f)
@@ -460,11 +460,13 @@ private fun TrendChart(
             val textLayout = textMeasurer.measure(
                 androidx.compose.ui.text.AnnotatedString(label), textStyle
             )
+            // Keep cost labels in the reserved strip below the baseline so tall
+            // bars can never cover them.
             drawText(
                 textLayoutResult = textLayout,
                 topLeft = Offset(
                     centerX - textLayout.size.width / 2f,
-                    (top - textLayout.size.height - 4.dp.toPx()).coerceAtLeast(0f)
+                    usableHeight + (labelSpace - textLayout.size.height) / 2f
                 )
             )
         }

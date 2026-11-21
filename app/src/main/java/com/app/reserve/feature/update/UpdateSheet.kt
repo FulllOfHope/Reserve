@@ -54,13 +54,13 @@ import com.app.reserve.core.update.UpdateInfo
 @Composable
 fun UpdateSheet(
     update: UpdateInfo,
-    onDownload: () -> Unit,
-    onLater: () -> Unit,
+    onUpdate: () -> Unit,
+    onSnooze: () -> Unit,
     onSkipVersion: () -> Unit
 ) {
     val colors = LocalReserveColors.current
     ModalBottomSheet(
-        onDismissRequest = onLater,
+        onDismissRequest = onSnooze,
         containerColor = colors.surface,
         contentColor = colors.textBase,
         scrimColor = Color.Black.copy(alpha = 0.45f),
@@ -158,23 +158,24 @@ fun UpdateSheet(
 
             Spacer(modifier = Modifier.height(spacing_xl))
             Button(
-                onClick = onDownload,
-                modifier = Modifier.fillMaxWidth().height(52.dp),
+                onClick = onUpdate,
+                modifier = Modifier.fillMaxWidth().height(56.dp),
                 shape = RoundedCornerShape(radius_md),
+                elevation = ButtonDefaults.buttonElevation(defaultElevation = 2.dp),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = colors.primaryDefault,
                     contentColor = colors.textReverse
                 )
             ) {
-                Text("Download update", style = MaterialTheme.typography.titleMedium)
+                Text("Update", style = MaterialTheme.typography.titleMedium)
             }
             Row(modifier = Modifier.fillMaxWidth()) {
                 TextButton(
-                    onClick = onLater,
+                    onClick = onSnooze,
                     modifier = Modifier.weight(1f),
                     colors = ButtonDefaults.textButtonColors(contentColor = colors.textLight)
                 ) {
-                    Text("Later")
+                    Text("Remind me in a week")
                 }
                 TextButton(
                     onClick = onSkipVersion,

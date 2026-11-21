@@ -1,6 +1,5 @@
 package com.app.reserve
 
-import android.content.Intent
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -32,6 +31,7 @@ import androidx.compose.material.icons.outlined.AccountBalance
 import androidx.compose.material.icons.outlined.Backup
 import androidx.compose.material.icons.outlined.Category
 import androidx.compose.material.icons.outlined.DeleteOutline
+import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.FileDownload
 import androidx.compose.material.icons.outlined.FileUpload
 import androidx.compose.material.icons.outlined.PieChart
@@ -75,7 +75,6 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.core.net.toUri
 import androidx.glance.appwidget.updateAll
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -92,6 +91,8 @@ import androidx.navigation.navArgument
 import com.app.reserve.core.application.ReserveApplication
 import com.app.reserve.core.database.TransactionEntity
 import com.app.reserve.core.database.TransactionType
+import com.app.reserve.core.domain.SmartImportAnalysis
+import com.app.reserve.core.domain.SmartImporter
 import com.app.reserve.core.designsystem.LocalReserveColors
 import com.app.reserve.core.designsystem.ReserveTheme
 import com.app.reserve.core.designsystem.spacing_lg
@@ -108,6 +109,7 @@ import com.app.reserve.feature.manage.CategoriesScreen
 import com.app.reserve.feature.manage.RecurringScreen
 import com.app.reserve.feature.settings.SettingsScreen
 import com.app.reserve.feature.settings.SettingsViewModel
+import com.app.reserve.feature.settings.SmartImportSheet
 import com.app.reserve.feature.trash.TrashScreen
 import com.app.reserve.feature.transactions.TransactionsScreen
 import com.app.reserve.feature.update.UpdateSheet
@@ -116,6 +118,7 @@ import com.app.reserve.ui.AppLockScreen
 import com.app.reserve.ui.AppLockViewModel
 import com.app.reserve.ui.ReserveBottomBar
 import com.app.reserve.ui.Routes
+import java.io.ByteArrayOutputStream
 import java.time.LocalDate
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -126,11 +129,14 @@ fun ReserveApp(
     initialOpenAddSheet: Boolean = false,
     onOpenAddSheetConsumed: () -> Unit = {},
     initialOpenUpdateSheet: Boolean = false,
-    onOpenUpdateSheetConsumed: () -> Unit = {}
+    onOpenUpdateSheetConsumed: () -> Unit = {},
+    initialOpenInstallUpdate: Boolean = false,
+    onOpenInstallUpdateConsumed: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val application = context.applicationContext as ReserveApplication
     val updateRepository = application.container.updateRepository
+    val updateInstaller = application.container.updateInstaller
     val appScope = rememberCoroutineScope()
 
     val ledgerViewModel: LedgerViewModel = viewModel(
@@ -160,6 +166,20 @@ fun ReserveApp(
     val updateChecking by settingsViewModel.updateChecking.collectAsStateWithLifecycle()
     val updateCheckMessage by settingsViewModel.updateCheckMessage.collectAsStateWithLifecycle()
     val availableUpdate by updateRepository.availableUpdate.collectAsStateWithLifecycle()
+    val shouldShowUpdateSheet by updateRepository.shouldShowSheet.collectAsStateWithLifecycle()
+    val needInstallPermission by updateInstaller.needInstallPermission
+        .collectAsStateWithLifecycle()
+    val installerMessage by updateInstaller.message.collectAsStateWithLifecycle()
+
+    val installPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) {
+        appScope.launch {
+            updateInstaller.onInstallPermissionResult(
+                updateInstaller.canRequestInstalls()
+            )
+        }
+    }
 
     var showUpdateSheet by rememberSaveable { mutableStateOf(initialOpenUpdateSheet) }
     LaunchedEffect(initialOpenUpdateSheet) {
@@ -168,8 +188,24 @@ fun ReserveApp(
         // A cold start may not have a cached release yet; refresh silently.
         if (availableUpdate == null) updateRepository.refreshForSheet()
     }
-    LaunchedEffect(availableUpdate) {
-        if (availableUpdate != null) showUpdateSheet = true
+    LaunchedEffect(shouldShowUpdateSheet, availableUpdate) {
+        if (shouldShowUpdateSheet && availableUpdate != null) showUpdateSheet = true
+    }
+    LaunchedEffect(initialOpenInstallUpdate) {
+        if (!initialOpenInstallUpdate) return@LaunchedEffect
+        onOpenInstallUpdateConsumed()
+        appScope.launch { updateInstaller.promptInstall() }
+    }
+    LaunchedEffect(needInstallPermission) {
+        if (!needInstallPermission) return@LaunchedEffect
+        updateInstaller.onInstallPermissionRequestHandled()
+        runCatching { installPermissionLauncher.launch(updateInstaller.installPermissionIntent()) }
+            .onFailure { Toast.makeText(context, "Open install permission in Settings to finish the update.", Toast.LENGTH_LONG).show() }
+    }
+    LaunchedEffect(installerMessage) {
+        val text = installerMessage ?: return@LaunchedEffect
+        Toast.makeText(context, text, Toast.LENGTH_LONG).show()
+        updateInstaller.clearMessage()
     }
 
     val darkTheme = when (settings?.themeMode ?: ThemeMode.SYSTEM) {
@@ -251,18 +287,15 @@ fun ReserveApp(
         if (showUpdateSheet && update != null) {
             UpdateSheet(
                 update = update,
-                onDownload = {
+                onUpdate = {
                     showUpdateSheet = false
                     onOpenUpdateSheetConsumed()
-                    val intent = Intent(Intent.ACTION_VIEW, update.apkUrl.toUri()).apply {
-                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    }
-                    runCatching { context.startActivity(intent) }
+                    appScope.launch { updateInstaller.enqueue(update) }
                 },
-                onLater = {
+                onSnooze = {
                     showUpdateSheet = false
                     onOpenUpdateSheetConsumed()
-                    appScope.launch { updateRepository.dismiss() }
+                    appScope.launch { updateRepository.snoozeUpdate(update.versionName) }
                 },
                 onSkipVersion = {
                     showUpdateSheet = false
@@ -298,6 +331,7 @@ private fun MainNavigation(
     // the Home destination stops the request from firing again after the user
     // presses back and Home re-enters composition.
     var openAddSheetPending by rememberSaveable { mutableStateOf(initialOpenAddSheet) }
+    var smartImportAnalysis by remember { mutableStateOf<SmartImportAnalysis?>(null) }
 
     LaunchedEffect(initialOpenAddSheet) {
         if (initialOpenAddSheet) openAddSheetPending = true
@@ -318,6 +352,23 @@ private fun MainNavigation(
 
     fun readDocument(uri: android.net.Uri): String? = runCatching {
         context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
+    }.getOrNull()
+
+    fun readDocumentBytes(uri: android.net.Uri): ByteArray? = runCatching {
+        val input = context.contentResolver.openInputStream(uri) ?: return@runCatching null
+        input.use { stream ->
+            val output = ByteArrayOutputStream()
+            val buffer = ByteArray(8192)
+            var total = 0
+            while (true) {
+                val read = stream.read(buffer)
+                if (read < 0) break
+                total += read
+                if (total > SmartImporter.MAX_FILE_BYTES) return@runCatching null
+                output.write(buffer, 0, read)
+            }
+            output.toByteArray()
+        }
     }.getOrNull()
 
     val exportLauncher = rememberLauncherForActivityResult(
@@ -356,6 +407,25 @@ private fun MainNavigation(
                         if (summary.skipped > 0) ", skipped ${summary.skipped}." else "."
                 }
             )
+        }
+    }
+
+    val smartImportLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            val bytes = withContext(Dispatchers.IO) { readDocumentBytes(uri) }
+            if (bytes == null) {
+                toast("Could not read that file, or it is larger than 20 MB.")
+                return@launch
+            }
+            val analysis = withContext(Dispatchers.IO) { SmartImporter.analyze(bytes) }
+            if (analysis.error != null) {
+                toast(analysis.error)
+            } else {
+                smartImportAnalysis = analysis
+            }
         }
     }
 
@@ -602,6 +672,15 @@ private fun MainNavigation(
                 DrawerItem("Import CSV", Icons.Outlined.FileDownload) {
                     importLauncher.launch(arrayOf("text/csv", "text/comma-separated-values", "text/plain"))
                 }
+                DrawerItem("Smart import", Icons.Outlined.Description) {
+                    smartImportLauncher.launch(
+                        arrayOf(
+                            "text/csv", "text/comma-separated-values", "text/plain",
+                            "text/tab-separated-values", "application/json",
+                            "application/zip", "application/x-zip-compressed", "*/*"
+                        )
+                    )
+                }
                 DrawerItem("Create Backup", Icons.Outlined.Backup) {
                     backupLauncher.launch("reserve-backup-${LocalDate.now()}.json")
                 }
@@ -765,6 +844,7 @@ private fun MainNavigation(
                                         onOpenRecurring = { navController.navigate(Routes.Recurring) },
                                         exportCsv = { ledgerViewModel.exportCsv() },
                                         importCsv = { ledgerViewModel.importCsv(it) },
+                                        smartImport = { ledgerViewModel.smartImport(it) },
                                         createBackup = { ledgerViewModel.createBackup() },
                                         restoreBackup = { ledgerViewModel.restoreBackup(it) },
                                         onBackupCreated = { settingsViewModel.markBackupNow() },
@@ -815,6 +895,7 @@ private fun MainNavigation(
                             onOpenRecurring = { navController.navigate(Routes.Recurring) },
                             exportCsv = { ledgerViewModel.exportCsv() },
                             importCsv = { ledgerViewModel.importCsv(it) },
+                            smartImport = { ledgerViewModel.smartImport(it) },
                             createBackup = { ledgerViewModel.createBackup() },
                             restoreBackup = { ledgerViewModel.restoreBackup(it) },
                             onBackupCreated = { settingsViewModel.markBackupNow() },
@@ -855,6 +936,9 @@ private fun MainNavigation(
                             },
                             onCreateRecurring = { rule ->
                                 ledgerViewModel.saveRecurring(rule)
+                            },
+                            onCreateCategory = { category ->
+                                ledgerViewModel.saveCategory(category)
                             }
                         )
                     }
@@ -923,6 +1007,15 @@ private fun MainNavigation(
                             }
                         )
                     }
+                }
+
+                smartImportAnalysis?.let { analysis ->
+                    SmartImportSheet(
+                        analysis = analysis,
+                        onDismiss = { smartImportAnalysis = null },
+                        onImport = { rows -> ledgerViewModel.smartImport(rows) },
+                        onResult = { message -> toast(message) }
+                    )
                 }
             }
         }

@@ -7,6 +7,7 @@ import com.app.reserve.core.data.ReserveRepository
 import com.app.reserve.core.database.ReserveDatabase
 import com.app.reserve.core.datastore.SettingsDataStore
 import com.app.reserve.core.update.GitHubUpdateChecker
+import com.app.reserve.core.update.UpdateInstaller
 import com.app.reserve.core.update.UpdateNotifier
 import com.app.reserve.core.update.UpdateRepository
 import com.app.reserve.feature.sms.SmsImporter
@@ -42,6 +43,10 @@ class ReserveApplication : Application() {
             // runs only the recent overlap. No-op until SMS permission exists.
             runCatching { container.smsImporter.scanInbox() }
         }
+        // Recover a download that finished while the app was in the background.
+        container.scope.launch {
+            runCatching { container.updateInstaller.checkPendingDownload() }
+        }
         // One quiet, time-gated GitHub check per app start. The repository does
         // the request on IO and decides whether a notification is warranted.
         container.scope.launch {
@@ -62,6 +67,7 @@ class AppContainer(application: Application) {
     val smsImporter = SmsImporter(application, repository, settings)
     val updateChecker = GitHubUpdateChecker(currentVersion = installedVersion(application))
     val updateNotifier = UpdateNotifier(application)
+    val updateInstaller = UpdateInstaller(application, settings, updateNotifier)
     val updateRepository = UpdateRepository(settings, updateChecker, updateNotifier)
 }
 

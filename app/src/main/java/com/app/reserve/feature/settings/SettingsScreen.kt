@@ -74,6 +74,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.app.reserve.R
 import com.app.reserve.core.data.ImportSummary
+import com.app.reserve.core.data.ImportedTransaction
 import com.app.reserve.core.datastore.ReserveSettings
 import com.app.reserve.core.datastore.ThemeMode
 import com.app.reserve.core.designsystem.AccentSwatches
@@ -92,7 +93,10 @@ import com.app.reserve.core.designsystem.spacing_xs
 import com.app.reserve.core.designsystem.spacing_xl
 import com.app.reserve.core.designsystem.spacing_xxl
 import com.app.reserve.core.domain.Dates
+import com.app.reserve.core.domain.SmartImportAnalysis
+import com.app.reserve.core.domain.SmartImporter
 import com.app.reserve.feature.ledger.LedgerState
+import java.io.ByteArrayOutputStream
 import java.time.LocalDate
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -113,6 +117,7 @@ fun SettingsScreen(
     onOpenRecurring: () -> Unit,
     exportCsv: suspend () -> String,
     importCsv: suspend (String) -> ImportSummary,
+    smartImport: suspend (List<ImportedTransaction>) -> ImportSummary,
     createBackup: suspend () -> String,
     restoreBackup: suspend (String) -> Boolean,
     onBackupCreated: () -> Unit,
@@ -130,6 +135,7 @@ fun SettingsScreen(
     val scope = rememberCoroutineScope()
     var showColorPicker by remember { mutableStateOf(false) }
     var showIconPicker by remember { mutableStateOf(false) }
+    var smartImportAnalysis by remember { mutableStateOf<SmartImportAnalysis?>(null) }
 
     val packageVersion = remember {
         runCatching {
@@ -143,6 +149,23 @@ fun SettingsScreen(
 
     fun readDocument(uri: android.net.Uri): String? = runCatching {
         context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
+    }.getOrNull()
+
+    fun readDocumentBytes(uri: android.net.Uri): ByteArray? = runCatching {
+        val input = context.contentResolver.openInputStream(uri) ?: return@runCatching null
+        input.use { stream ->
+            val output = ByteArrayOutputStream()
+            val buffer = ByteArray(8192)
+            var total = 0
+            while (true) {
+                val read = stream.read(buffer)
+                if (read < 0) break
+                total += read
+                if (total > SmartImporter.MAX_FILE_BYTES) return@runCatching null
+                output.write(buffer, 0, read)
+            }
+            output.toByteArray()
+        }
     }.getOrNull()
 
     val exportLauncher = rememberLauncherForActivityResult(
@@ -181,6 +204,25 @@ fun SettingsScreen(
                         if (summary.skipped > 0) ", skipped ${summary.skipped}." else "."
                 }
             )
+        }
+    }
+
+    val smartImportLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            val bytes = withContext(Dispatchers.IO) { readDocumentBytes(uri) }
+            if (bytes == null) {
+                toast("Could not read that file, or it is larger than 20 MB.")
+                return@launch
+            }
+            val analysis = withContext(Dispatchers.IO) { SmartImporter.analyze(bytes) }
+            if (analysis.error != null) {
+                toast(analysis.error)
+            } else {
+                smartImportAnalysis = analysis
+            }
         }
     }
 
@@ -651,6 +693,21 @@ fun SettingsScreen(
                     )
                     ReserveDivider()
                     SettingRow(
+                        icon = Icons.Rounded.Description,
+                        label = "Smart import",
+                        value = "Any tracker export",
+                        onClick = {
+                            smartImportLauncher.launch(
+                                arrayOf(
+                                    "text/csv", "text/comma-separated-values", "text/plain",
+                                    "text/tab-separated-values", "application/json",
+                                    "application/zip", "application/x-zip-compressed", "*/*"
+                                )
+                            )
+                        }
+                    )
+                    ReserveDivider()
+                    SettingRow(
                         icon = Icons.Rounded.Backup,
                         label = "Create backup",
                         value = "JSON",
@@ -735,6 +792,15 @@ fun SettingsScreen(
             currentAlias = settings?.appIconAlias ?: IconSwitcher.DEFAULT_ALIAS,
             onSelectAlias = onSetAppIconAlias,
             onDismiss = { showIconPicker = false }
+        )
+    }
+
+    smartImportAnalysis?.let { analysis ->
+        SmartImportSheet(
+            analysis = analysis,
+            onDismiss = { smartImportAnalysis = null },
+            onImport = smartImport,
+            onResult = { toast(it) }
         )
     }
 }

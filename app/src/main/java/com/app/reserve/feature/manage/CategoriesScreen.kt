@@ -41,6 +41,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.unit.dp
+import com.app.reserve.core.data.DEFAULT_EXPENSE_CATEGORY_ID
+import com.app.reserve.core.data.DEFAULT_INCOME_CATEGORY_ID
+import com.app.reserve.core.data.DEFAULT_TRANSFER_CATEGORY_ID
+import com.app.reserve.core.data.defaultCategoryName
 import com.app.reserve.core.database.CategoryEntity
 import com.app.reserve.core.database.TransactionType
 import com.app.reserve.core.designsystem.CategoryAvatar
@@ -69,6 +73,7 @@ fun CategoriesScreen(
 
     val expense = state.categories.filter { it.type == TransactionType.EXPENSE }
     val income = state.categories.filter { it.type == TransactionType.INCOME }
+    val transfer = state.categories.filter { it.type == TransactionType.TRANSFER }
 
     Column(modifier = Modifier.fillMaxSize()) {
         ScreenTitle(
@@ -91,6 +96,10 @@ fun CategoriesScreen(
             }
             item { SectionLabel(text = "Income") }
             items(income, key = { it.id }) { category ->
+                CategoryRow(category = category, onClick = { editing = category })
+            }
+            item { SectionLabel(text = "Transfer") }
+            items(transfer, key = { it.id }) { category ->
                 CategoryRow(category = category, onClick = { editing = category })
             }
             if (state.categories.isEmpty()) {
@@ -160,16 +169,22 @@ private fun CategoryRow(category: CategoryEntity, onClick: () -> Unit) {
 }
 
 @Composable
-private fun CategoryEditorDialog(
+fun CategoryEditorDialog(
     existing: CategoryEntity?,
     onDismiss: () -> Unit,
     onSave: (CategoryEntity) -> Unit,
-    onDelete: (CategoryEntity) -> Unit
+    onDelete: (CategoryEntity) -> Unit,
+    initialType: TransactionType = TransactionType.EXPENSE,
+    allowedTypes: List<TransactionType> = listOf(
+        TransactionType.EXPENSE,
+        TransactionType.INCOME,
+        TransactionType.TRANSFER
+    )
 ) {
     val colors = LocalReserveColors.current
     var name by remember { mutableStateOf(existing?.name ?: "") }
     var type by remember {
-        mutableStateOf(existing?.type ?: TransactionType.EXPENSE)
+        mutableStateOf(existing?.type ?: initialType)
     }
     var colorHex by remember { mutableStateOf(existing?.colorHex ?: "#10B981") }
     var iconName by remember { mutableStateOf(existing?.iconName ?: "other") }
@@ -208,10 +223,12 @@ private fun CategoryEditorDialog(
                 Text("Type", style = MaterialTheme.typography.labelMedium, color = colors.textLighter)
                 Spacer(modifier = Modifier.height(6.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf(
-                        TransactionType.EXPENSE to "Expense",
-                        TransactionType.INCOME to "Income"
-                    ).forEach { (option, label) ->
+                    allowedTypes.forEach { option ->
+                        val label = when (option) {
+                            TransactionType.EXPENSE -> "Expense"
+                            TransactionType.INCOME -> "Income"
+                            TransactionType.TRANSFER -> "Transfer"
+                        }
                         val selected = type == option
                         Surface(
                             onClick = { type = option },
@@ -303,7 +320,10 @@ private fun CategoryEditorDialog(
         },
         dismissButton = {
             Row {
-                if (existing != null && existing.name != "Uncategorized") {
+                val isDefault = existing?.id == DEFAULT_EXPENSE_CATEGORY_ID ||
+                    existing?.id == DEFAULT_INCOME_CATEGORY_ID ||
+                    existing?.id == DEFAULT_TRANSFER_CATEGORY_ID
+                if (existing != null && !isDefault) {
                     TextButton(onClick = { confirmDelete = true }) {
                         Text("Delete", color = colors.warningDefault)
                     }
@@ -324,7 +344,7 @@ private fun CategoryEditorDialog(
             title = { Text("Delete ${existing.name}?") },
             text = {
                 Text(
-                    "Its transactions move to Uncategorized, and any budget for this category is removed. This cannot be undone."
+                    "Its transactions move to ${defaultCategoryName(existing.type)}, and any budget for this category is removed. This cannot be undone."
                 )
             },
             confirmButton = {

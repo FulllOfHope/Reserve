@@ -2,6 +2,8 @@ package com.app.reserve.feature.transactions
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Box
@@ -95,12 +97,13 @@ fun TransactionsScreen(
     var query by remember { mutableStateOf("") }
     var filter by remember { mutableStateOf(TypeFilter.All) }
     var selectedCategory by remember { mutableStateOf<CategoryFilter?>(null) }
+    var selectedCategories by remember { mutableStateOf<Set<String>>(emptySet()) }
     var showCategorySheet by remember { mutableStateOf(false) }
 
     val categoryOptions = remember(state.categories) {
         listOf(CategoryFilter(null, "All categories")) +
             state.categories.map { CategoryFilter(it.id, it.name) } +
-            CategoryFilter("", "Uncategorized")
+            CategoryFilter("", "No category")
     }
     val categoryId = selectedCategory?.id
 
@@ -108,6 +111,11 @@ fun TransactionsScreen(
         .filter { filter.type == null || it.type == filter.type }
         .filter { transaction ->
             when {
+                selectedCategories.isNotEmpty() ->
+                    selectedCategories.any { id ->
+                        if (id.isEmpty()) transaction.categoryId == null
+                        else transaction.categoryId == id
+                    }
                 categoryId == null -> true
                 categoryId.isEmpty() -> transaction.categoryId == null
                 else -> transaction.categoryId == categoryId
@@ -126,6 +134,15 @@ fun TransactionsScreen(
     val grouped = filtered.groupBy { Dates.toLocalDate(it.timestamp) }
         .toSortedMap(compareByDescending<LocalDate> { it })
 
+    val categoryChipLabel = when {
+        selectedCategories.size > 1 -> "${selectedCategories.size} categories"
+        selectedCategories.size == 1 ->
+            categoryOptions.firstOrNull { it.id == selectedCategories.first() }?.label
+                ?: "1 category"
+        else -> selectedCategory?.label ?: "Category"
+    }
+    val hasCategoryFilter = selectedCategory != null || selectedCategories.isNotEmpty()
+
     Column(modifier = Modifier.fillMaxSize()) {
         MonthSwitcher(
             monthYear = state.monthYear,
@@ -141,13 +158,13 @@ fun TransactionsScreen(
         ) {
             item {
                 FilterChip(
-                    selected = selectedCategory != null,
+                    selected = hasCategoryFilter,
                     onClick = { showCategorySheet = true },
                     label = {
                         Text(
-                            text = selectedCategory?.label ?: "Category",
+                            text = categoryChipLabel,
                             style = MaterialTheme.typography.labelLarge.copy(
-                                fontWeight = if (selectedCategory != null) FontWeight.Bold else FontWeight.Medium
+                                fontWeight = if (hasCategoryFilter) FontWeight.Bold else FontWeight.Medium
                             ),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
@@ -168,7 +185,7 @@ fun TransactionsScreen(
                     ),
                     border = FilterChipDefaults.filterChipBorder(
                         enabled = true,
-                        selected = selectedCategory != null,
+                        selected = hasCategoryFilter,
                         borderColor = colors.strokeFaint,
                         selectedBorderColor = colors.primaryDefault
                     )
@@ -246,24 +263,45 @@ fun TransactionsScreen(
         CategoryFilterSheet(
             options = categoryOptions,
             selected = selectedCategory,
+            multiSelected = selectedCategories,
             onSelect = { option ->
+                selectedCategories = emptySet()
                 selectedCategory = if (option.id == null) null else option
                 showCategorySheet = false
             },
+            onToggleMulti = { option ->
+                val id = option.id
+                if (id == null) {
+                    selectedCategories = emptySet()
+                    selectedCategory = null
+                } else {
+                    selectedCategories = if (id in selectedCategories) {
+                        selectedCategories - id
+                    } else {
+                        selectedCategories + id
+                    }
+                    selectedCategory = null
+                }
+            },
+            onDone = { showCategorySheet = false },
             onDismiss = { showCategorySheet = false }
         )
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 private fun CategoryFilterSheet(
     options: List<CategoryFilter>,
     selected: CategoryFilter?,
+    multiSelected: Set<String>,
     onSelect: (CategoryFilter) -> Unit,
+    onToggleMulti: (CategoryFilter) -> Unit,
+    onDone: () -> Unit,
     onDismiss: () -> Unit
 ) {
     val colors = LocalReserveColors.current
+    val haptic = LocalHapticFeedback.current
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         containerColor = colors.surface,
@@ -286,17 +324,33 @@ private fun CategoryFilterSheet(
                 color = colors.textBase,
                 modifier = Modifier.fillMaxWidth()
             )
-            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = "Tap to filter one category. Long press to combine several.",
+                style = MaterialTheme.typography.labelSmall,
+                color = colors.textLighter,
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(Modifier.height(12.dp))
             options.chunked(2).forEach { row ->
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     row.forEach { option ->
-                        val isSelected = selected?.id == option.id
+                        val isSelected = selected?.id == option.id ||
+                            (option.id != null && option.id in multiSelected)
                         Surface(
-                            onClick = { onSelect(option) },
-                            modifier = Modifier.weight(1f).height(48.dp),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(48.dp)
+                                .combinedClickable(
+                                    onClick = { onSelect(option) },
+                                    onLongClick = {
+                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        onToggleMulti(option)
+                                    }
+                                ),
                             shape = RoundedCornerShape(12.dp),
                             color = if (isSelected) colors.primaryContainer else colors.fillLight,
                             border = BorderStroke(
@@ -306,7 +360,7 @@ private fun CategoryFilterSheet(
                         ) {
                             Box(contentAlignment = Alignment.Center) {
                                 Text(
-                                    text = option.label,
+                                    text = if (isSelected) "✓ ${option.label}" else option.label,
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = if (isSelected) colors.primaryDefault else colors.textBase,
                                     maxLines = 1,
@@ -318,6 +372,12 @@ private fun CategoryFilterSheet(
                     if (row.size == 1) Spacer(Modifier.weight(1f))
                 }
                 Spacer(Modifier.height(8.dp))
+            }
+            if (multiSelected.isNotEmpty()) {
+                Spacer(Modifier.height(8.dp))
+                TextButton(onClick = onDone) {
+                    Text("Show ${multiSelected.size} selected", color = colors.primaryDefault)
+                }
             }
         }
     }

@@ -252,6 +252,18 @@ class LedgerViewModel(
         return repository.importTransactions(parsed.rows, default)
     }
 
+    suspend fun smartImport(
+        rows: List<com.app.reserve.core.data.ImportedTransaction>
+    ): com.app.reserve.core.data.ImportSummary {
+        if (rows.isEmpty()) return com.app.reserve.core.data.ImportSummary(0, -1)
+        val accounts = repository.allAccounts()
+        val default = accounts.firstOrNull { !it.isArchived }?.id ?: accounts.firstOrNull()?.id
+        if (default.isNullOrBlank()) {
+            return com.app.reserve.core.data.ImportSummary(0, -1)
+        }
+        return repository.importSmartTransactions(rows, default)
+    }
+
     suspend fun createBackup(): String = BackupManager.encode(repository.snapshot())
 
     suspend fun restoreBackup(text: String): Boolean {
