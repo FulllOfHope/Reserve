@@ -13,8 +13,8 @@ android {
         applicationId = "com.app.reserve"
         minSdk = 26
         targetSdk = 37
-        versionCode = 14
-        versionName = "1.10.0"
+        versionCode = 15
+        versionName = "1.11.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -71,6 +71,9 @@ dependencies {
     // Glance Widget
     implementation("androidx.glance:glance-appwidget:1.1.1")
     implementation("androidx.glance:glance-material3:1.1.1")
+
+    // Daily local backup scheduling (already on device through Glance)
+    implementation("androidx.work:work-runtime-ktx:2.7.1")
 
     // Navigation
     implementation(libs.androidx.navigation.compose)

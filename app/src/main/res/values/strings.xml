@@ -1,4 +1,5 @@
 <resources>
     <string name="app_name">Reserve</string>
+    <string name="widget_name">Reserve</string>
     <string name="widget_description">Your balance, spending and income for the month</string>
 </resources>

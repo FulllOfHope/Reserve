@@ -192,6 +192,37 @@ class SettingsDataStore(private val context: Context) {
         }
     }
 
+    /**
+     * Restores every preference from a backup in one DataStore transaction.
+     * The launcher icon alias is applied afterwards (it is a system-side change).
+     */
+    suspend fun importBackupSettings(backup: BackupSettings) {
+        val restored = backup.toReserveSettings()
+        val alias = IconSwitcher.normalizeAlias(restored.appIconAlias)
+        context.reserveDataStore.edit { preferences ->
+            preferences[BIOMETRIC_LOCK] = restored.biometricLock
+            preferences[HIDE_AMOUNTS] = restored.hideAmounts
+            preferences[THEME_MODE] = restored.themeMode.name
+            preferences[PRIMARY_COLOR_HEX] = restored.primaryColorHex
+            preferences[APP_ICON_ALIAS] = alias
+            preferences[LAST_BACKUP_AT] = restored.lastBackupAt
+            preferences[LAST_SMS_SCAN_AT] = restored.lastSmsScanAt
+            preferences[SMS_IMPORTED_TOTAL] = restored.smsImportedTotal
+            preferences[LEDGER_REPAIRED_V3] = restored.ledgerRepairedV3
+            preferences[UPDATE_CHECKS_ENABLED] = restored.updateChecksEnabled
+            preferences[LAST_UPDATE_CHECK_AT] = restored.lastUpdateCheckAt
+            preferences[DISMISSED_UPDATE_VERSION] = restored.dismissedUpdateVersion
+            preferences[SNOOZED_UPDATE_VERSION] = restored.snoozedUpdateVersion
+            preferences[SNOOZE_UPDATE_REMINDER_UNTIL] = restored.snoozeUpdateReminderUntil
+            preferences[PENDING_UPDATE_DOWNLOAD_ID] = restored.pendingUpdateDownloadId
+            preferences[PENDING_UPDATE_VERSION] = restored.pendingUpdateVersion
+            val ids = restored.balanceAccountIds
+            if (ids == null) preferences.remove(BALANCE_ACCOUNT_IDS)
+            else preferences[BALANCE_ACCOUNT_IDS] = ids
+        }
+        runCatching { IconSwitcher.setAppIcon(context, alias) }
+    }
+
     /** One-shot read used by the background scanner. */
     suspend fun currentSettings(): ReserveSettings = settings.first()
 }

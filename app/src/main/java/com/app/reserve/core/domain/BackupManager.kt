@@ -2,6 +2,9 @@ package com.app.reserve.core.domain
 
 import com.app.reserve.core.data.LedgerSnapshot
 import com.app.reserve.core.database.AccountEntity
+import com.app.reserve.core.datastore.BackupSettings
+import com.app.reserve.core.datastore.ReserveSettings
+import com.app.reserve.core.datastore.toBackupSettings
 import com.app.reserve.core.database.BudgetEntity
 import com.app.reserve.core.database.CategoryEntity
 import com.app.reserve.core.database.RecurringEntity
@@ -14,8 +17,11 @@ import kotlinx.serialization.json.Json
 /** A complete, self-contained local backup. Stored as JSON on the device. */
 object BackupManager {
 
-    /** v2 adds `deletedAt` tombstones; v1 backups remain importable (field defaults to null). */
-    const val CURRENT_VERSION = 2
+    /**
+     * v2 added `deletedAt` tombstones, v3 adds all DataStore settings and the
+     * account opening balance. Older versions remain importable via field defaults.
+     */
+    const val CURRENT_VERSION = 3
 
     private val json = Json {
         prettyPrint = true
@@ -23,7 +29,16 @@ object BackupManager {
         encodeDefaults = true
     }
 
-    fun encode(snapshot: LedgerSnapshot, now: Long = System.currentTimeMillis()): String {
+    /** Ledger-only encoding, kept for backwards compatibility and existing tests. */
+    fun encode(snapshot: LedgerSnapshot, now: Long = System.currentTimeMillis()): String =
+        encode(snapshot, null, now)
+
+    /** Full backup: every ledger row plus every DataStore preference. */
+    fun encode(
+        snapshot: LedgerSnapshot,
+        settings: ReserveSettings?,
+        now: Long = System.currentTimeMillis()
+    ): String {
         val dto = BackupDto(
             version = CURRENT_VERSION,
             exportedAt = now,
@@ -31,23 +46,40 @@ object BackupManager {
             categories = snapshot.categories.map { it.toDto() },
             transactions = snapshot.transactions.map { it.toDto() },
             budgets = snapshot.budgets.map { it.toDto() },
-            recurring = snapshot.recurring.map { it.toDto() }
+            recurring = snapshot.recurring.map { it.toDto() },
+            settings = settings?.toBackupSettings()
         )
         return json.encodeToString(dto)
     }
 
     fun decode(text: String): Result<LedgerSnapshot> = runCatching {
+        decodeBundle(text).getOrThrow().snapshot
+    }
+
+    /** Decodes both the ledger and the settings (null for legacy backups). */
+    fun decodeBundle(text: String): Result<BackupBundle> = runCatching {
         val dto = json.decodeFromString<BackupDto>(text)
         require(dto.version <= CURRENT_VERSION) { "This backup was created by a newer version of Reserve." }
-        LedgerSnapshot(
-            accounts = dto.accounts.map { it.toEntity() },
-            categories = dto.categories.map { it.toEntity() },
-            transactions = dto.transactions.map { it.toEntity() },
-            budgets = dto.budgets.map { it.toEntity() },
-            recurring = dto.recurring.map { it.toEntity() }
+        BackupBundle(
+            snapshot = LedgerSnapshot(
+                accounts = dto.accounts.map { it.toEntity() },
+                categories = dto.categories.map { it.toEntity() },
+                transactions = dto.transactions.map { it.toEntity() },
+                budgets = dto.budgets.map { it.toEntity() },
+                recurring = dto.recurring.map { it.toEntity() }
+            ),
+            settings = dto.settings,
+            exportedAt = dto.exportedAt
         )
     }
 }
+
+/** The complete decoded content of a backup file. */
+data class BackupBundle(
+    val snapshot: LedgerSnapshot,
+    val settings: BackupSettings?,
+    val exportedAt: Long
+)
 
 @Serializable
 data class BackupDto(
@@ -57,7 +89,9 @@ data class BackupDto(
     val categories: List<BackupCategory> = emptyList(),
     val transactions: List<BackupTransaction> = emptyList(),
     val budgets: List<BackupBudget> = emptyList(),
-    val recurring: List<BackupRecurring> = emptyList()
+    val recurring: List<BackupRecurring> = emptyList(),
+    /** Absent in v1/v2 backups. */
+    val settings: BackupSettings? = null
 )
 
 @Serializable
@@ -66,12 +100,14 @@ data class BackupAccount(
     val name: String,
     val balance: Long,
     val isArchived: Boolean = false,
-    val createdAt: Long = 0L
+    val createdAt: Long = 0L,
+    /** Absent in legacy backups, where opening capital was not preserved. */
+    val openingBalanceMinor: Long = 0L
 ) {
-    fun toEntity() = AccountEntity(id, name, balance, isArchived, createdAt)
+    fun toEntity() = AccountEntity(id, name, balance, isArchived, createdAt, openingBalanceMinor)
 }
 
-fun AccountEntity.toDto() = BackupAccount(id, name, balance, isArchived, createdAt)
+fun AccountEntity.toDto() = BackupAccount(id, name, balance, isArchived, createdAt, openingBalanceMinor)
 
 @Serializable
 data class BackupCategory(

@@ -46,7 +46,11 @@ Built with Kotlin, Jetpack Compose, Material 3, Room + SQLCipher, DataStore and 
 | No duplicate imports | Every message is hashed (sender + timestamp + body) and recorded in `sms_imports`; `INSERT OR IGNORE` makes overlap between the live receiver and inbox backfill harmless. |
 | No tracking | No analytics, advertising, crash-reporting or attribution SDKs. |
 | No accounts | Nothing to sign up for and no identifiers to leak. |
-| Local exports only | CSV / JSON files are written through the Storage Access Framework to a location you choose. |
+| Local exports only | CSV / JSON files are written through the Storage Access Framework to a location you choose. Daily automatic backups are written only to the app's private internal storage; the newest 5 are kept and older Reserve backups are pruned. Nothing is uploaded. |
+
+### Local backups
+
+Reserve writes one backup every 24 hours to its private internal storage. Each backup is a JSON file containing every ledger row (including Trash tombstones), all accounts, categories, budgets, recurring rules **and all DataStore settings**. Only the newest 5 Reserve backups are kept; older ones are deleted automatically, and files not created by Reserve are never touched. The restore picker lists local backups newest-first with the latest preselected, and can also import any compatible backup file through the system document picker. Restoring replaces ledger data and settings together.
 
 SMS permissions (`RECEIVE_SMS`, `READ_SMS`) are optional and requested on first launch. Granting `READ_SMS` starts the one-time inbox backfill automatically; later launches only re-read a three-day overlap. Denying them only disables automatic SMS capture.
 

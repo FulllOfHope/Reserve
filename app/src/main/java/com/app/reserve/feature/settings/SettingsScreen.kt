@@ -73,6 +73,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.app.reserve.R
+import com.app.reserve.core.backup.BackupCoordinator
 import com.app.reserve.core.data.ImportSummary
 import com.app.reserve.core.data.ImportedTransaction
 import com.app.reserve.core.datastore.ReserveSettings
@@ -121,6 +122,9 @@ fun SettingsScreen(
     createBackup: suspend () -> String,
     restoreBackup: suspend (String) -> Boolean,
     onBackupCreated: () -> Unit,
+    localBackups: List<BackupCoordinator.BackupFile> = emptyList(),
+    onRestoreLocalBackup: (BackupCoordinator.BackupFile) -> Unit = {},
+    onBackupNow: () -> Unit = {},
     smsScanning: Boolean = false,
     smsScanMessage: String? = null,
     onScanSms: () -> Unit = {},
@@ -136,6 +140,7 @@ fun SettingsScreen(
     var showColorPicker by remember { mutableStateOf(false) }
     var showIconPicker by remember { mutableStateOf(false) }
     var smartImportAnalysis by remember { mutableStateOf<SmartImportAnalysis?>(null) }
+    var showRestoreSheet by remember { mutableStateOf(false) }
 
     val packageVersion = remember {
         runCatching {
@@ -261,6 +266,24 @@ fun SettingsScreen(
             val restored = restoreBackup(text)
             toast(if (restored) "Backup restored." else "That backup could not be read.")
         }
+    }
+
+    if (showRestoreSheet) {
+        RestoreBackupSheet(
+            backups = localBackups,
+            onDismiss = { showRestoreSheet = false },
+            onRestore = { file ->
+                showRestoreSheet = false
+                onRestoreLocalBackup(file)
+            },
+            onImportFile = {
+                showRestoreSheet = false
+                restoreLauncher.launch(arrayOf("application/json", "text/plain"))
+            },
+            onBackupNow = {
+                onBackupNow()
+            }
+        )
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
@@ -719,10 +742,15 @@ fun SettingsScreen(
                     SettingRow(
                         icon = Icons.Rounded.Restore,
                         label = "Restore backup",
-                        value = "Replace all data",
-                        onClick = {
-                            restoreLauncher.launch(arrayOf("application/json", "text/plain"))
-                        }
+                        value = if (localBackups.isEmpty()) "Import a file" else "${localBackups.size} local",
+                        onClick = { showRestoreSheet = true }
+                    )
+                    ReserveDivider()
+                    SettingRow(
+                        icon = Icons.Rounded.SystemUpdate,
+                        label = "Automatic backups",
+                        value = "Daily · keep 5",
+                        onClick = onBackupNow
                     )
                     val lastBackup = settings?.lastBackupAt ?: 0L
                     if (lastBackup > 0L) {

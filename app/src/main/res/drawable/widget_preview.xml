@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Light-mode preview shown by the launcher widget picker. Geometric stand-ins
+     for text keep this vector small and crisp at every launcher density. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="250dp"
+    android:height="140dp"
+    android:viewportWidth="250"
+    android:viewportHeight="140">
+
+    <path
+        android:pathData="M20,1 H230 A19,19 0 0 1 249,20 V120 A19,19 0 0 1 230,139 H20 A19,19 0 0 1 1,120 V20 A19,19 0 0 1 20,1 Z"
+        android:fillColor="#F8F9FA" />
+    <path
+        android:pathData="M20,1 H230 A19,19 0 0 1 249,20 V120 A19,19 0 0 1 230,139 H20 A19,19 0 0 1 1,120 V20 A19,19 0 0 1 20,1 Z M20,3 A17,17 0 0 0 3,20 V120 A17,17 0 0 0 20,137 H230 A17,17 0 0 0 247,120 V20 A17,17 0 0 0 230,3 Z"
+        android:fillColor="#E6E8EC"
+        android:fillType="evenOdd" />
+
+    <!-- Header: mark, wordmark, month caption, Add pill. -->
+    <path
+        android:pathData="M25,14 a11,11 0 1,0 0.01,0"
+        android:fillColor="#00B843" />
+    <path
+        android:pathData="M42,19 h48 v5 h-48 z"
+        android:fillColor="#111315" />
+    <path
+        android:pathData="M96,20 h26 v4 h-26 z"
+        android:fillColor="#8A9099" />
+    <path
+        android:pathData="M199,15 h36 a16,16 0 0 1 0,32 h-36 a16,16 0 0 1 0,-32 z"
+        android:fillColor="#00B843" />
+    <path
+        android:pathData="M211,26 h12 v3 h-12 z M212,32 h9 v2 h-9 z"
+        android:fillColor="#FFFFFF" />
+
+    <!-- Hero balance. -->
+    <path
+        android:pathData="M25,60 h64 v4 h-64 z"
+        android:fillColor="#8A9099" />
+    <path
+        android:pathData="M25,69 h92 v11 h-92 z"
+        android:fillColor="#111315" />
+
+    <!-- Stats sub-container. -->
+    <path
+        android:pathData="M25,91 h200 a14,14 0 0 1 14,14 v17 a14,14 0 0 1 -14,14 h-200 a14,14 0 0 1 -14,-14 v-17 a14,14 0 0 1 14,-14 z"
+        android:fillColor="#E6E8EC" />
+    <path
+        android:pathData="M25,92 h200 a13,13 0 0 1 13,13 v17 a13,13 0 0 1 -13,13 h-200 a13,13 0 0 1 -13,-13 v-17 a13,13 0 0 1 13,-13 z"
+        android:fillColor="#FFFFFF" />
+    <path
+        android:pathData="M36,98 h26 v3 h-26 z M36,106 h40 v5 h-40 z"
+        android:fillColor="#8A9099" />
+    <path
+        android:pathData="M125,98 h30 v3 h-30 z M125,106 h46 v5 h-46 z"
+        android:fillColor="#00B843" />
+    <path
+        android:pathData="M111,98 h1 v18 h-1 z"
+        android:fillColor="#E6E8EC" />
+</vector>

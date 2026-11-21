@@ -2,6 +2,7 @@ package com.app.reserve.core.application
 
 import android.app.Application
 import android.content.Context
+import com.app.reserve.core.backup.BackupScheduler
 import com.app.reserve.core.data.TRASH_RETENTION_MS
 import com.app.reserve.core.data.ReserveRepository
 import com.app.reserve.core.database.ReserveDatabase
@@ -43,6 +44,9 @@ class ReserveApplication : Application() {
             // runs only the recent overlap. No-op until SMS permission exists.
             runCatching { container.smsImporter.scanInbox() }
         }
+        // Daily local backup: first launch runs one immediately, later starts keep
+        // the existing 24-hour schedule. WorkManager survives reboot on its own.
+        BackupScheduler.schedule(this)
         // Recover a download that finished while the app was in the background.
         container.scope.launch {
             runCatching { container.updateInstaller.checkPendingDownload() }

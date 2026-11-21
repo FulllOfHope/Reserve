@@ -89,6 +89,8 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.app.reserve.core.application.ReserveApplication
+import com.app.reserve.core.backup.BackupCoordinator
+import com.app.reserve.core.backup.BackupScheduler
 import com.app.reserve.core.database.TransactionEntity
 import com.app.reserve.core.database.TransactionType
 import com.app.reserve.core.domain.SmartImportAnalysis
@@ -107,6 +109,7 @@ import com.app.reserve.feature.ledger.LedgerViewModel
 import com.app.reserve.feature.manage.AccountsScreen
 import com.app.reserve.feature.manage.CategoriesScreen
 import com.app.reserve.feature.manage.RecurringScreen
+import com.app.reserve.feature.settings.RestoreBackupSheet
 import com.app.reserve.feature.settings.SettingsScreen
 import com.app.reserve.feature.settings.SettingsViewModel
 import com.app.reserve.feature.settings.SmartImportSheet
@@ -212,6 +215,17 @@ fun ReserveApp(
         ThemeMode.SYSTEM -> isSystemInDarkTheme()
         ThemeMode.LIGHT -> false
         ThemeMode.DARK -> true
+    }
+
+    // Keep the home-screen widget in sync when theme, privacy or accent settings change.
+    var lastWidgetSettingsKey by remember { mutableStateOf<Triple<Boolean, String?, Boolean>?>(null) }
+    LaunchedEffect(settings, darkTheme) {
+        val current = settings ?: return@LaunchedEffect
+        val key = Triple(current.hideAmounts, current.primaryColorHex, darkTheme)
+        if (lastWidgetSettingsKey != null && lastWidgetSettingsKey != key) {
+            ReserveWidget().updateAll(context.applicationContext)
+        }
+        lastWidgetSettingsKey = key
     }
 
     ReserveTheme(
@@ -324,6 +338,20 @@ private fun MainNavigation(
     val currentRoute = backStackEntry?.destination?.route
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
+    val application = context.applicationContext as ReserveApplication
+    val backupCoordinator = remember {
+        BackupCoordinator(
+            context.applicationContext,
+            application.container.repository,
+            application.container.settings
+        )
+    }
+    var localBackups by remember { mutableStateOf(emptyList<BackupCoordinator.BackupFile>()) }
+    var showDrawerRestoreSheet by remember { mutableStateOf(false) }
+    val settingsFlow by settingsViewModel.settings.collectAsStateWithLifecycle()
+    LaunchedEffect(settingsFlow?.lastBackupAt) {
+        localBackups = withContext(Dispatchers.IO) { backupCoordinator.listLocalBackups() }
+    }
 
     val pagerState = rememberPagerState(pageCount = { 4 })
 
@@ -434,7 +462,7 @@ private fun MainNavigation(
     ) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
         scope.launch {
-            val json = ledgerViewModel.createBackup()
+            val json = withContext(Dispatchers.IO) { backupCoordinator.createBackupJson() }
             val ok = withContext(Dispatchers.IO) {
                 runCatching {
                     context.contentResolver.openOutputStream(uri)?.use { output ->
@@ -462,8 +490,33 @@ private fun MainNavigation(
                 return@launch
             }
             val restored = ledgerViewModel.restoreBackup(text)
+            if (restored) {
+                backupCoordinator.restoreSettingsOnly(text)
+                localBackups = withContext(Dispatchers.IO) { backupCoordinator.listLocalBackups() }
+            }
             toast(if (restored) "Backup restored." else "That backup could not be read.")
         }
+    }
+
+    val restoreFromLocal: (BackupCoordinator.BackupFile) -> Unit = { file ->
+        scope.launch {
+            val text = withContext(Dispatchers.IO) { backupCoordinator.readBackup(file) }
+            if (text == null) {
+                toast("Could not read that backup.")
+                return@launch
+            }
+            val restored = ledgerViewModel.restoreBackup(text)
+            if (restored) {
+                backupCoordinator.restoreSettingsOnly(text)
+                localBackups = withContext(Dispatchers.IO) { backupCoordinator.listLocalBackups() }
+            }
+            toast(if (restored) "Backup restored." else "That backup could not be read.")
+        }
+    }
+
+    val backupNow: () -> Unit = {
+        BackupScheduler.runNow(context)
+        toast("Local backup queued.")
     }
 
     val smsPermissionLauncher = rememberLauncherForActivityResult(
@@ -587,6 +640,22 @@ private fun MainNavigation(
         )
     }
 
+    if (showDrawerRestoreSheet) {
+        RestoreBackupSheet(
+            backups = localBackups,
+            onDismiss = { showDrawerRestoreSheet = false },
+            onRestore = { file ->
+                showDrawerRestoreSheet = false
+                restoreFromLocal(file)
+            },
+            onImportFile = {
+                showDrawerRestoreSheet = false
+                restoreLauncher.launch(arrayOf("application/json", "text/plain"))
+            },
+            onBackupNow = backupNow
+        )
+    }
+
     ModalNavigationDrawer(
         drawerState = drawerState,
         // While open, the drawer owns horizontal drags on every pager tab — the
@@ -685,7 +754,7 @@ private fun MainNavigation(
                     backupLauncher.launch("reserve-backup-${LocalDate.now()}.json")
                 }
                 DrawerItem("Restore Backup", Icons.Outlined.Restore) {
-                    restoreLauncher.launch(arrayOf("application/json", "text/plain"))
+                    showDrawerRestoreSheet = true
                 }
                 DrawerItem(
                     label = "Trash",
@@ -845,9 +914,19 @@ private fun MainNavigation(
                                         exportCsv = { ledgerViewModel.exportCsv() },
                                         importCsv = { ledgerViewModel.importCsv(it) },
                                         smartImport = { ledgerViewModel.smartImport(it) },
-                                        createBackup = { ledgerViewModel.createBackup() },
-                                        restoreBackup = { ledgerViewModel.restoreBackup(it) },
+                                        createBackup = { withContext(Dispatchers.IO) { backupCoordinator.createBackupJson() } },
+                                        restoreBackup = { text ->
+                                            val restored = ledgerViewModel.restoreBackup(text)
+                                            if (restored) {
+                                                backupCoordinator.restoreSettingsOnly(text)
+                                                localBackups = withContext(Dispatchers.IO) { backupCoordinator.listLocalBackups() }
+                                            }
+                                            restored
+                                        },
                                         onBackupCreated = { settingsViewModel.markBackupNow() },
+                                        localBackups = localBackups,
+                                        onRestoreLocalBackup = restoreFromLocal,
+                                        onBackupNow = backupNow,
                                         smsScanning = settingsViewModel.smsScanning.collectAsStateWithLifecycle().value,
                                         smsScanMessage = settingsViewModel.smsScanMessage.collectAsStateWithLifecycle().value,
                                         onScanSms = onScanSms,
@@ -896,9 +975,19 @@ private fun MainNavigation(
                             exportCsv = { ledgerViewModel.exportCsv() },
                             importCsv = { ledgerViewModel.importCsv(it) },
                             smartImport = { ledgerViewModel.smartImport(it) },
-                            createBackup = { ledgerViewModel.createBackup() },
-                            restoreBackup = { ledgerViewModel.restoreBackup(it) },
+                            createBackup = { withContext(Dispatchers.IO) { backupCoordinator.createBackupJson() } },
+                            restoreBackup = { text ->
+                                val restored = ledgerViewModel.restoreBackup(text)
+                                if (restored) {
+                                    backupCoordinator.restoreSettingsOnly(text)
+                                    localBackups = withContext(Dispatchers.IO) { backupCoordinator.listLocalBackups() }
+                                }
+                                restored
+                            },
                             onBackupCreated = { settingsViewModel.markBackupNow() },
+                            localBackups = localBackups,
+                            onRestoreLocalBackup = restoreFromLocal,
+                            onBackupNow = backupNow,
                             smsScanning = settingsViewModel.smsScanning.collectAsStateWithLifecycle().value,
                             smsScanMessage = settingsViewModel.smsScanMessage.collectAsStateWithLifecycle().value,
                             onScanSms = onScanSms,

@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <paths>
+    <files-path name="local_backups" path="backups/" />
     <cache-path name="backups" path="backups/" />
     <external-files-path name="apk_downloads" path="Download/" />
 </paths>

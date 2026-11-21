@@ -7,6 +7,8 @@ import com.app.reserve.core.database.CategoryEntity
 import com.app.reserve.core.database.RecurringEntity
 import com.app.reserve.core.database.TransactionEntity
 import com.app.reserve.core.database.TransactionType
+import com.app.reserve.core.datastore.ReserveSettings
+import com.app.reserve.core.datastore.ThemeMode
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -62,7 +64,7 @@ class BackupManagerTest {
     @Test
     fun `newer backup versions are rejected`() {
         val text = BackupManager.encode(snapshot)
-            .replace("\"version\": 2", "\"version\": 99")
+            .replace("\"version\": ${BackupManager.CURRENT_VERSION}", "\"version\": 99")
         val result = BackupManager.decode(text)
         assertTrue(result.isFailure)
     }
@@ -91,6 +93,42 @@ class BackupManagerTest {
         val decoded = BackupManager.decode(legacy).getOrThrow()
         assertEquals(null, decoded.transactions.first().deletedAt)
         assertEquals(50L, decoded.transactions.first().amount)
+    }
+
+    @Test
+    fun `settings and account opening balance round-trip in v3 backups`() {
+        val withOpening = snapshot.copy(
+            accounts = snapshot.accounts.map { it.copy(openingBalanceMinor = 12_345L) }
+        )
+        val settings = ReserveSettings(
+            hideAmounts = true,
+            themeMode = ThemeMode.DARK,
+            primaryColorHex = "#7C3AED",
+            balanceAccountIds = setOf("cash"),
+            lastBackupAt = 4_000L
+        )
+        val bundle = BackupManager.decodeBundle(
+            BackupManager.encode(withOpening, settings, now = 4_000L)
+        ).getOrThrow()
+
+        assertEquals(12_345L, bundle.snapshot.accounts.first().openingBalanceMinor)
+        assertEquals(true, bundle.settings?.hideAmounts)
+        assertEquals(ThemeMode.DARK.name, bundle.settings?.themeMode)
+        assertEquals("#7C3AED", bundle.settings?.primaryColorHex)
+        assertEquals(setOf("cash"), bundle.settings?.balanceAccountIds)
+        assertEquals(4_000L, bundle.exportedAt)
+    }
+
+    @Test
+    fun `legacy v2 backup without settings still decodes`() {
+        val legacy = BackupManager.encode(snapshot, now = 2_000L)
+            .replace("\"version\": ${BackupManager.CURRENT_VERSION}", "\"version\": 2")
+            .replace(Regex("\"settings\": \\{[^}]*\\},?\\s*"), "")
+        val bundle = BackupManager.decodeBundle(legacy).getOrThrow()
+
+        assertEquals(2_000L, bundle.exportedAt)
+        assertEquals(null, bundle.settings)
+        assertEquals(1, bundle.snapshot.transactions.size)
     }
 
     @Test
