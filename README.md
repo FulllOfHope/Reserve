@@ -20,7 +20,8 @@ Built with Kotlin, Jetpack Compose, Material 3, Room + SQLCipher, DataStore and 
 - **🔐 Encrypted database (SQLCipher, 16 KB aligned)** — The Room database is encrypted with SQLCipher 4 (AES-256). The passphrase is generated on-device with `SecureRandom` and sealed using AES-256-GCM in `EncryptedSharedPreferences`, backed by the Android Keystore. No passphrase is hardcoded or committed. Native libraries are built with 16 KB ELF page alignment (`0x4000`), verified with `readelf` and `zipalign -P 16`.
 - **📩 Automatic SMS capture** — On first grant, Reserve reads your whole SMS inbox, recognises bank debit/credit alerts, creates the matching bank accounts automatically, assigns categories where the merchant is obvious, updates balances, and suppresses duplicates with a SHA-256 fingerprint. New messages are captured live by a broadcast receiver. Everything is parsed on-device; the app remains fully usable if SMS permission is denied.
 - **🎨 Jetpack Compose UI** — 100% Compose with Material 3. Inter typography, tabular numerals, a floating pill bottom bar, a pager-driven tab shell and a calm, minimal Ente-inspired design system.
-- **🧩 Glance home-screen widget** — A premium 4×2 Glance widget with the Reserve mark, current balance, month-to-date spending and income, and a one-tap add button.
+- **🧩 Glance home-screen widget** — A responsive Glance widget with compact, standard and expanded layouts. It shows the Reserve mark, balance, month-to-date spending/income where space allows, recent activity, and a one-tap add shortcut — all masked when hide-amounts is on.
+- **🗂️ Daily local backups** — A full JSON backup is written every 24 hours to private internal storage. Only the newest 5 Reserve backups are kept, the latest is preselected in Restore, and any compatible backup file can still be imported through the system picker. Nothing is uploaded.
 - **📴 Local-first architecture** — Room is the single source of truth; UI state is derived through Kotlin `Flow`. CSV import/export and local JSON backup/restore use the system document picker — no servers involved.
 
 ### Also included
@@ -50,9 +51,9 @@ Built with Kotlin, Jetpack Compose, Material 3, Room + SQLCipher, DataStore and 
 
 ### Local backups
 
-Reserve writes one backup every 24 hours to its private internal storage. Each backup is a JSON file containing every ledger row (including Trash tombstones), all accounts, categories, budgets, recurring rules **and all DataStore settings**. Only the newest 5 Reserve backups are kept; older ones are deleted automatically, and files not created by Reserve are never touched. The restore picker lists local backups newest-first with the latest preselected, and can also import any compatible backup file through the system document picker. Restoring replaces ledger data and settings together.
+Reserve writes one backup every 24 hours to its private internal storage. Each backup is a JSON file containing every ledger row (including Trash tombstones), all accounts and their opening balances, categories, budgets, recurring rules **and all DataStore settings**. Only the newest 5 Reserve backups are kept; older ones are deleted automatically, and files not created by Reserve are never touched. The restore picker lists local backups newest-first with the latest preselected, and can also import any compatible backup file through the system document picker. Restoring replaces ledger data and settings together.
 
-SMS permissions (`RECEIVE_SMS`, `READ_SMS`) are optional and requested on first launch. Granting `READ_SMS` starts the one-time inbox backfill automatically; later launches only re-read a three-day overlap. Denying them only disables automatic SMS capture.
+SMS permissions (`RECEIVE_SMS`, `READ_SMS`) are optional and currently requested on first launch. Granting `READ_SMS` starts the one-time inbox backfill automatically; later launches only re-read a three-day overlap. Denying them only disables automatic SMS capture — transactions can still be added manually, and a scan can be started later from Settings.
 
 ### How SMS capture works
 
@@ -84,9 +85,10 @@ Reserve follows the visual language of [Ente](https://ente.io) — calm surfaces
 app/src/main/java/com/app/reserve/
 ├── core/
 │   ├── application/      ReserveApplication + manual AppContainer (DI)
+│   ├── backup/           Daily backup scheduler, worker and rotation
 │   ├── data/             ReserveRepository — transactional ledger operations
 │   ├── database/         Room entities, DAOs, SQLCipher database, DbSecurity
-│   ├── datastore/        Theme, accent and lock preferences
+│   ├── datastore/        Theme, accent, lock and backup preferences
 │   ├── designsystem/     Colour tokens, type, components, category icons
 │   ├── domain/           Money, Dates, BudgetCalculator, LedgerMath, CSV, backup
 │   └── util/             Icon switching
@@ -96,7 +98,7 @@ app/src/main/java/com/app/reserve/
 │   ├── home/             Dashboard
 │   ├── insights/         Donut, top categories, trend
 │   ├── manage/           Accounts, categories, recurring rules
-│   ├── settings/         Settings, theme, lock, import/export
+│   ├── settings/         Settings, theme, lock, import/export, restore picker
 │   ├── sms/              Live receiver + inbox importer
 │   ├── transactions/     Searchable, filterable history
 │   └── widget/           Glance app widget
@@ -107,7 +109,7 @@ app/src/main/java/com/app/reserve/
 - **State** — unidirectional data flow with `StateFlow` / `Flow` and activity-scoped ViewModels.
 - **Persistence** — Room 2.8 with SQLCipher, DataStore Preferences, `Long` minor units.
 - **DI** — a small manual `AppContainer`; no reflection-based framework.
-- **Background work** — `BroadcastReceiver` + `goAsync()` for live SMS, a startup inbox backfill, and Glance for widget updates.
+- **Background work** — `BroadcastReceiver` + `goAsync()` for live SMS, a startup inbox backfill, WorkManager for daily local backups, and Glance for widget updates.
 
 ---
 
@@ -148,7 +150,7 @@ The debug APK is written to `app/build/outputs/apk/debug/app-debug.apk`.
 
 ### Test coverage
 
-- **53 unit tests** — exact minor-unit money formatting/parsing, budget maths and all-expenses budgets, transfer neutrality, CSV round-trip, backup validation, amount-input behaviour, and 17 SMS parsing cases (bank formats, credit-card alerts, Indian digit grouping, balance isolation, OTP/promo/personal-message rejection, fingerprint stability).
+- **80 unit tests** — exact minor-unit money formatting/parsing, budget maths and all-expenses budgets, transfer neutrality, CSV round-trip, v1/v2/v3 backup validation including settings and opening balance, amount-input behaviour, and 22 SMS parsing cases (bank formats, credit-card alerts, Indian digit grouping, balance isolation, OTP/promo/personal-message rejection, fingerprint stability).
 - **3 instrumentation tests** — Compose smoke checks for the transaction row and transactions screen, plus a regression test that asserts `ReserveApplication` is registered in the manifest.
 
 ---
