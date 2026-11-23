@@ -72,8 +72,10 @@ class GitHubUpdateChecker(
             "https://api.github.com/repos/FulllOfHope/Reserve/releases/latest"
         const val RELEASES_PAGE_URL = "https://github.com/FulllOfHope/Reserve/releases/latest"
 
-        private const val MAX_NOTE_LINES = 12
-        private const val MAX_NOTE_CHARS = 700
+        // The update sheet must always leave room for the Update button, even
+        // on a short screen. Release bodies link to full notes for detail.
+        private const val MAX_NOTE_LINES = 4
+        private const val MAX_NOTE_CHARS = 240
         private val MARKDOWN_LINK = Regex("\\[([^]]+)]\\([^)]+\\)")
 
         /** Removes a leading v/V and any pre-release/build suffix. */

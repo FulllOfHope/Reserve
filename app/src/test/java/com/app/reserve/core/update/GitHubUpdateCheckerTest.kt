@@ -75,6 +75,14 @@ class GitHubUpdateCheckerTest {
     }
 
     @Test
+    fun `release notes are capped so the update button stays visible`() {
+        val longNotes = (1..20).joinToString("\n") { "Line $it ${"x".repeat(40)}" }
+        val notes = GitHubUpdateChecker.formatReleaseNotes(longNotes)
+        assertEquals(4, notes.lines().size)
+        assertTrue(notes.length <= 240)
+    }
+
+    @Test
     fun `checker uses only the releases endpoint and stays silent on failure`() {
         val fetcher = FakeFetcher(releaseJson)
         val info = GitHubUpdateChecker("1.3.0", fetcher).checkForUpdate()

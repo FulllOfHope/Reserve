@@ -4,12 +4,15 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -33,7 +36,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import com.app.reserve.R
@@ -84,10 +86,9 @@ fun UpdateSheet(
                     contentAlignment = Alignment.Center
                 ) {
                     Image(
-                        painter = painterResource(id = R.drawable.ic_reserve_mark),
+                        painter = painterResource(id = R.drawable.reverse_glass),
                         contentDescription = null,
-                        colorFilter = ColorFilter.tint(colors.primaryDefault),
-                        modifier = Modifier.size(26.dp)
+                        modifier = Modifier.size(30.dp)
                     )
                 }
                 Spacer(modifier = Modifier.width(spacing_md))
@@ -125,7 +126,13 @@ fun UpdateSheet(
                 color = colors.fillBase,
                 border = BorderStroke(1.dp, colors.strokeFaint)
             ) {
-                Column(modifier = Modifier.fillMaxWidth().padding(spacing_lg)) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 140.dp)
+                        .verticalScroll(rememberScrollState())
+                        .padding(spacing_lg)
+                ) {
                     Text(
                         text = "RELEASE NOTES",
                         style = MaterialTheme.typography.labelSmall,
