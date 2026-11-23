@@ -49,46 +49,61 @@ fun Context.findFragmentActivity(): FragmentActivity? {
     return null
 }
 
-/** The only screen shown when biometric protection is on and the app is locked. */
+/** The only accessible screen while the app lock is armed. */
 @Composable
 fun AppLockScreen(onUnlocked: () -> Unit) {
     val colors = LocalReserveColors.current
     val context = LocalContext.current
     val activity = context.findFragmentActivity()
     var message by remember { mutableStateOf<String?>(null) }
+    var starting by remember { mutableStateOf(false) }
 
     fun authenticate() {
+        if (starting) return
+        // Fail closed. A prompt that cannot be shown must never unlock the ledger.
         if (activity == null) {
-            onUnlocked()
+            message = "Couldn't start biometric unlock. Reopen Reserve and try again."
             return
         }
         val manager = BiometricManager.from(context)
         val authenticators = BiometricManager.Authenticators.BIOMETRIC_WEAK or
             BiometricManager.Authenticators.DEVICE_CREDENTIAL
-        if (manager.canAuthenticate(authenticators) != BiometricManager.BIOMETRIC_SUCCESS) {
-            message = "Biometric unlock is unavailable on this device."
+        val availability = manager.canAuthenticate(authenticators)
+        if (availability != BiometricManager.BIOMETRIC_SUCCESS) {
+            message = biometricAvailabilityMessage(availability)
             return
         }
-        val prompt = BiometricPrompt(
-            activity,
-            ContextCompat.getMainExecutor(context),
-            object : BiometricPrompt.AuthenticationCallback() {
-                override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
-                    onUnlocked()
-                }
 
-                override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
-                    message = errString.toString()
-                }
+        starting = true
+        message = null
+        val callback = object : BiometricPrompt.AuthenticationCallback() {
+            override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+                starting = false
+                onUnlocked()
             }
-        )
-        prompt.authenticate(
-            BiometricPrompt.PromptInfo.Builder()
-                .setTitle("Unlock Reserve")
-                .setSubtitle("Your ledger stays on this device")
-                .setAllowedAuthenticators(authenticators)
-                .build()
-        )
+
+            override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+                starting = false
+                message = biometricErrorMessage(errorCode)
+            }
+
+            override fun onAuthenticationFailed() {
+                message = "That biometric wasn't recognised. Try again or use your device PIN."
+            }
+        }
+        runCatching {
+            val prompt = BiometricPrompt(activity, ContextCompat.getMainExecutor(context), callback)
+            prompt.authenticate(
+                BiometricPrompt.PromptInfo.Builder()
+                    .setTitle("Unlock Reserve")
+                    .setSubtitle("Your ledger stays on this device")
+                    .setAllowedAuthenticators(authenticators)
+                    .build()
+            )
+        }.onFailure {
+            starting = false
+            message = "Couldn't start biometric unlock. Try again or use your device PIN."
+        }
     }
 
     LaunchedEffect(Unit) { authenticate() }
@@ -154,10 +169,46 @@ fun AppLockScreen(onUnlocked: () -> Unit) {
                 Text(
                     text = it,
                     style = MaterialTheme.typography.bodySmall,
-                    color = colors.textLighter,
+                    color = colors.textLight,
                     textAlign = TextAlign.Center
                 )
             }
         }
     }
+}
+
+private fun biometricAvailabilityMessage(result: Int): String = when (result) {
+    BiometricManager.BIOMETRIC_ERROR_NO_HARDWARE ->
+        "This device has no biometric hardware. Set a screen lock in device settings."
+    BiometricManager.BIOMETRIC_ERROR_HW_UNAVAILABLE ->
+        "Biometric hardware is unavailable right now. Try again shortly."
+    BiometricManager.BIOMETRIC_ERROR_NONE_ENROLLED ->
+        "No fingerprint, face or screen lock is set up. Add one in device settings."
+    BiometricManager.BIOMETRIC_ERROR_SECURITY_UPDATE_REQUIRED ->
+        "A security update is required before biometric unlock can be used."
+    else -> "Biometric unlock is unavailable on this device."
+}
+
+private fun biometricErrorMessage(code: Int): String = when (code) {
+    BiometricPrompt.ERROR_USER_CANCELED, BiometricPrompt.ERROR_NEGATIVE_BUTTON ->
+        "Unlock cancelled. Tap Unlock to try again."
+    BiometricPrompt.ERROR_CANCELED ->
+        "Unlock was interrupted. Tap Unlock to try again."
+    BiometricPrompt.ERROR_TIMEOUT ->
+        "Unlock timed out. Tap Unlock to try again."
+    BiometricPrompt.ERROR_LOCKOUT ->
+        "Too many attempts. Wait a moment, then use your device PIN."
+    BiometricPrompt.ERROR_LOCKOUT_PERMANENT ->
+        "Biometric unlock is locked. Use your device PIN."
+    BiometricPrompt.ERROR_NO_BIOMETRICS ->
+        "No biometrics are set up. Use your device PIN."
+    BiometricPrompt.ERROR_NO_DEVICE_CREDENTIAL ->
+        "No device PIN or screen lock is set up."
+    BiometricPrompt.ERROR_HW_NOT_PRESENT ->
+        "This device has no biometric hardware."
+    BiometricPrompt.ERROR_HW_UNAVAILABLE ->
+        "Biometric hardware is unavailable. Try again shortly."
+    BiometricPrompt.ERROR_VENDOR ->
+        "This device couldn't start biometric unlock. Try again."
+    else -> "Couldn't unlock. Try again or use your device PIN."
 }

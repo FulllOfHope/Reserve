@@ -1,13 +1,16 @@
 package com.app.reserve.feature.add
 
+import android.content.res.Configuration
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -46,10 +49,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.app.reserve.core.data.defaultCategoryName
@@ -78,6 +87,17 @@ import com.app.reserve.feature.manage.CategoryEditorDialog
 import java.time.LocalDate
 import java.util.UUID
 
+/** Keeps pasted/typed amounts valid: digits, one dot, at most two paise digits. */
+private fun sanitizeAmount(raw: String): String {
+    val cleaned = raw.filter { it.isDigit() || it == '.' }
+    val hasDecimal = cleaned.contains('.')
+    val parts = cleaned.split('.', limit = 2)
+    val whole = parts[0].take(9).trimStart('0')
+        .ifEmpty { if (hasDecimal) "0" else "" }
+    val fraction = if (hasDecimal && parts.size > 1) parts[1].take(2) else ""
+    return if (hasDecimal) "$whole.$fraction" else whole
+}
+
 @Composable
 fun AddTransactionScreen(
     state: LedgerState,
@@ -91,20 +111,32 @@ fun AddTransactionScreen(
     val colors = LocalReserveColors.current
     val focusManager = LocalFocusManager.current
 
-    BackHandler(onBack = onClose)
+    val initialAccountId = existing?.accountId ?: state.activeAccounts.firstOrNull()?.id
+    val initialForm = remember(existing) {
+        AddFormSnapshot(
+            type = existing?.type ?: initialType,
+            amountText = existing?.amount?.let(::minorToInput) ?: "",
+            categoryId = existing?.categoryId,
+            accountId = initialAccountId,
+            targetAccountId = existing?.targetAccountId
+                ?: state.activeAccounts.firstOrNull { it.id != initialAccountId }?.id,
+            note = existing?.note ?: "",
+            date = existing?.let { Dates.toLocalDate(it.timestamp) } ?: LocalDate.now(),
+            repeatMonthly = false
+        )
+    }
 
-    var type by remember(existing) { mutableStateOf(existing?.type ?: initialType) }
-    var amountText by remember(existing) { mutableStateOf(existing?.amount?.let { minorToInput(it) } ?: "") }
-    var categoryId by remember(existing) { mutableStateOf(existing?.categoryId) }
-    var accountId by remember(existing) {
-        mutableStateOf(existing?.accountId ?: state.activeAccounts.firstOrNull()?.id)
-    }
-    var targetAccountId by remember(existing) { mutableStateOf(existing?.targetAccountId) }
-    var note by remember(existing) { mutableStateOf(existing?.note ?: "") }
-    var date by remember(existing) {
-        mutableStateOf(existing?.let { Dates.toLocalDate(it.timestamp) } ?: LocalDate.now())
-    }
+    var type by remember(existing) { mutableStateOf(initialForm.type) }
+    var amountText by remember(existing) { mutableStateOf(initialForm.amountText) }
+    var categoryId by remember(existing) { mutableStateOf(initialForm.categoryId) }
+    var accountId by remember(existing) { mutableStateOf(initialForm.accountId) }
+    var targetAccountId by remember(existing) { mutableStateOf(initialForm.targetAccountId) }
+    var note by remember(existing) { mutableStateOf(initialForm.note) }
+    var date by remember(existing) { mutableStateOf(initialForm.date) }
     var repeatMonthly by remember { mutableStateOf(false) }
+    var noteFocused by remember { mutableStateOf(false) }
+    var amountFocused by remember { mutableStateOf(false) }
+    var showDiscardConfirm by remember { mutableStateOf(false) }
     var showAccountPicker by remember { mutableStateOf(false) }
     var showTargetPicker by remember { mutableStateOf(false) }
     var showDatePicker by remember { mutableStateOf(false) }
@@ -112,6 +144,16 @@ fun AddTransactionScreen(
     var pendingCategoryId by remember { mutableStateOf<String?>(null) }
 
     val categories = state.categories.filter { it.type == type }
+    // Top four categories by how often they were used for this transaction type.
+    val frequentCategories = remember(state.visibleTransactions, type, categories) {
+        state.visibleTransactions.asSequence()
+            .filter { it.type == type && it.categoryId != null }
+            .groupingBy { it.categoryId!! }.eachCount()
+            .entries
+            .sortedWith(compareByDescending<Map.Entry<String, Int>> { it.value }.thenBy { it.key })
+            .take(4)
+            .mapNotNull { entry -> categories.firstOrNull { it.id == entry.key } }
+    }
     LaunchedEffect(type, categories) {
         if (categories.none { it.id == categoryId }) {
             categoryId = categories.firstOrNull { it.name != defaultCategoryName(type) }?.id
@@ -141,6 +183,21 @@ fun AddTransactionScreen(
     val canSave = amountValid && accountValid && targetValid &&
         (type == TransactionType.TRANSFER || categoryId != null)
 
+    val dirty = type != initialForm.type ||
+        amountText != initialForm.amountText ||
+        categoryId != initialForm.categoryId ||
+        accountId != initialForm.accountId ||
+        targetAccountId != initialForm.targetAccountId ||
+        note.trim() != initialForm.note.trim() ||
+        date != initialForm.date ||
+        repeatMonthly != initialForm.repeatMonthly
+
+    fun requestClose() {
+        if (dirty) showDiscardConfirm = true else onClose()
+    }
+
+    BackHandler(onBack = { requestClose() })
+
     fun buildTransaction(): TransactionEntity = TransactionEntity(
         id = existing?.id ?: UUID.randomUUID().toString(),
         amount = amount.minor,
@@ -156,6 +213,9 @@ fun AddTransactionScreen(
     )
 
     val haptic = LocalHapticFeedback.current
+    // In landscape the fixed keypad leaves no room for the form column, so the
+    // whole sheet scrolls instead of clipping its top edge.
+    val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
 
     fun save() {
         if (!canSave) return
@@ -187,13 +247,14 @@ fun AddTransactionScreen(
             .clickable(
                 interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
                 indication = null,
-                onClick = onClose
+                onClick = { requestClose() }
             ),
         contentAlignment = Alignment.BottomCenter
     ) {
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
+                .then(if (landscape) Modifier.fillMaxHeight() else Modifier)
                 .clickable(
                     interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
                     indication = null,
@@ -205,7 +266,13 @@ fun AddTransactionScreen(
             ),
             color = colors.fillBase
         ) {
-            Column(modifier = Modifier.fillMaxWidth().navigationBarsPadding().imePadding()) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .navigationBarsPadding()
+                    .imePadding()
+                    .then(if (landscape) Modifier.verticalScroll(rememberScrollState()) else Modifier)
+            ) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -223,15 +290,14 @@ fun AddTransactionScreen(
                         color = colors.textBase,
                         modifier = Modifier.weight(1f)
                     )
-                    IconButton(onClick = onClose) {
+                    IconButton(onClick = { requestClose() }) {
                         Icon(Icons.Rounded.Close, contentDescription = "Close", tint = colors.textBase)
                     }
                 }
 
                 Column(
                     modifier = Modifier
-                        .weight(1f)
-                        .verticalScroll(rememberScrollState())
+                        .then(if (landscape) Modifier else Modifier.weight(1f).verticalScroll(rememberScrollState()))
                         .padding(horizontal = 16.dp)
                 ) {
                     if (existing == null) {
@@ -256,13 +322,41 @@ fun AddTransactionScreen(
                         color = colors.textLighter
                     )
                     Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = amount.display,
-                        style = MaterialTheme.typography.displayLarge.copy(
+                    // A real text field so hardware keyboards, paste and IME
+                    // dictation all work; the custom keypad stays as an alternative.
+                    BasicTextField(
+                        value = amountText,
+                        onValueChange = { amountText = sanitizeAmount(it) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .onFocusChanged { amountFocused = it.isFocused },
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.Decimal,
+                            imeAction = ImeAction.Done
+                        ),
+                        keyboardActions = KeyboardActions(onDone = {
+                            focusManager.clearFocus()
+                            amountFocused = false
+                        }),
+                        singleLine = true,
+                        textStyle = MaterialTheme.typography.displayLarge.copy(
                             fontSize = 42.sp,
-                            fontWeight = FontWeight.Medium
+                            fontWeight = FontWeight.Medium,
+                            color = if (amountValid) colors.textBase else colors.textLighter
                         ).tabular(),
-                        color = if (amountValid) colors.textBase else colors.textLighter
+                        decorationBox = { inner ->
+                            if (amountText.isEmpty()) {
+                                Text(
+                                    text = "₹0",
+                                    style = MaterialTheme.typography.displayLarge.copy(
+                                        fontSize = 42.sp,
+                                        fontWeight = FontWeight.Medium
+                                    ).tabular(),
+                                    color = colors.textLighter
+                                )
+                            }
+                            inner()
+                        }
                     )
                     Spacer(modifier = Modifier.height(16.dp))
 
@@ -278,6 +372,7 @@ fun AddTransactionScreen(
                     }
                     CategorySection(
                         categories = categories,
+                        frequentCategories = frequentCategories,
                         selectedId = categoryId,
                         onSelect = { categoryId = it },
                         onCreate = { showCategoryEditor = true }
@@ -302,12 +397,18 @@ fun AddTransactionScreen(
                         onValueChange = { note = it },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(vertical = 8.dp),
+                            .padding(vertical = 8.dp)
+                            .onFocusChanged { noteFocused = it.isFocused },
                         placeholder = {
                             Text("Note (optional)", color = colors.textLighter)
                         },
                         singleLine = false,
                         maxLines = 3,
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                        keyboardActions = KeyboardActions(onDone = {
+                            focusManager.clearFocus()
+                            noteFocused = false
+                        }),
                         shape = RoundedCornerShape(12.dp),
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedBorderColor = colors.primaryDefault,
@@ -358,7 +459,28 @@ fun AddTransactionScreen(
 
                 Surface(color = colors.fillBase) {
                     Column(modifier = Modifier.fillMaxWidth()) {
-                        AmountKeypad(onKey = { key -> amountText = AmountInput(amountText).append(key).text })
+                        if (amountFocused || noteFocused) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = spacing_lg, vertical = spacing_md),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = if (amountFocused) {
+                                        "Tap Done to use the keypad again"
+                                    } else {
+                                        "Tap the amount to use the keypad again"
+                                    },
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = colors.textLighter
+                                )
+                            }
+                        } else {
+                            AmountKeypad(onKey = { key ->
+                                amountText = AmountInput(amountText).append(key).text
+                            })
+                        }
                         EnteButton(
                             text = "Save",
                             onClick = { save() },
@@ -424,6 +546,30 @@ fun AddTransactionScreen(
             onDelete = {}
         )
     }
+
+    if (showDiscardConfirm) {
+        AlertDialog(
+            onDismissRequest = { showDiscardConfirm = false },
+            containerColor = colors.fillLight,
+            titleContentColor = colors.textBase,
+            textContentColor = colors.textLight,
+            title = { Text("Discard this transaction?") },
+            text = { Text("Your changes haven't been saved. Leaving now will lose them.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showDiscardConfirm = false
+                    onClose()
+                }) {
+                    Text("Discard", color = colors.warningDefault)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDiscardConfirm = false }) {
+                    Text("Keep editing", color = colors.textLight)
+                }
+            }
+        )
+    }
 }
 
 @Composable
@@ -466,6 +612,19 @@ private fun CustomDateTimePickerDialog(
                 val totalGridCells = firstDayOfWeek + daysInMonth
                 val rows = (totalGridCells + 6) / 7
 
+                // Sunday-first labels match the offset used for the day grid.
+                Row(modifier = Modifier.fillMaxWidth()) {
+                    listOf("S", "M", "T", "W", "T", "F", "S").forEach { label ->
+                        Text(
+                            text = label,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = colors.textLighter,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                            modifier = Modifier.width(44.dp)
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.height(8.dp))
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     for (row in 0 until rows) {
                         Row(
@@ -481,8 +640,8 @@ private fun CustomDateTimePickerDialog(
                                             selectedDate.dayOfMonth == dayNum
                                     Surface(
                                         modifier = Modifier
-                                            .size(36.dp)
-                                            .clickable {
+                                            .size(44.dp)
+                                            .clickable(onClickLabel = "Select day $dayNum") {
                                                 selectedDate = LocalDate.of(displayingMonthYear.year, displayingMonthYear.month, dayNum)
                                             },
                                         shape = RoundedCornerShape(radius_md),
@@ -497,7 +656,7 @@ private fun CustomDateTimePickerDialog(
                                         }
                                     }
                                 } else {
-                                    Spacer(modifier = Modifier.size(36.dp))
+                                    Spacer(modifier = Modifier.size(44.dp))
                                 }
                             }
                         }
@@ -553,7 +712,7 @@ private fun TypeSelector(
                 onClick = { onSelect(type) },
                 modifier = Modifier
                     .weight(1f)
-                    .height(40.dp),
+                    .heightIn(min = 48.dp),
                 shape = RoundedCornerShape(10.dp),
                 color = if (isSelected) accent.copy(alpha = 0.12f) else colors.fillLight,
                 border = BorderStroke(1.dp, if (isSelected) accent else colors.strokeFaint)
@@ -573,12 +732,32 @@ private fun TypeSelector(
 @Composable
 private fun CategorySection(
     categories: List<CategoryEntity>,
+    frequentCategories: List<CategoryEntity> = emptyList(),
     selectedId: String?,
     onSelect: (String) -> Unit,
     onCreate: () -> Unit
 ) {
     val colors = LocalReserveColors.current
     Column {
+        if (frequentCategories.isNotEmpty()) {
+            Text(
+                text = "OFTEN USED",
+                style = MaterialTheme.typography.labelSmall,
+                color = colors.textLighter
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                frequentCategories.forEach { category ->
+                    CategoryChip(
+                        category = category,
+                        selected = category.id == selectedId,
+                        onClick = { onSelect(category.id) },
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.height(12.dp))
+        }
         Text(
             text = "Category",
             style = MaterialTheme.typography.labelMedium,
@@ -754,6 +933,18 @@ private fun AccountPickerDialog(
         }
     )
 }
+
+/** Snapshot used by the discard guard, taken before any user edits. */
+private data class AddFormSnapshot(
+    val type: TransactionType,
+    val amountText: String,
+    val categoryId: String?,
+    val accountId: String?,
+    val targetAccountId: String?,
+    val note: String,
+    val date: LocalDate,
+    val repeatMonthly: Boolean
+)
 
 private fun minorToInput(minor: Long): String {
     val rupees = minor / 100

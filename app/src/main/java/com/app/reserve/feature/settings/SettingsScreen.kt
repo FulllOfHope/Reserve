@@ -1,7 +1,7 @@
 package com.app.reserve.feature.settings
 
-import android.widget.Toast
 import com.app.reserve.core.util.IconSwitcher
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.biometric.BiometricManager
@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.ime
@@ -30,13 +31,16 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Repeat
 import androidx.compose.material.icons.rounded.Backup
 import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.ChevronLeft
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.CreditCard
+import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.Description
 import androidx.compose.material.icons.rounded.FileDownload
 import androidx.compose.material.icons.rounded.FileUpload
 import androidx.compose.material.icons.rounded.Lock
+import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.PieChart
 import androidx.compose.material.icons.rounded.Restore
 import androidx.compose.material.icons.rounded.Sms
@@ -63,6 +67,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -93,6 +98,8 @@ import com.app.reserve.core.designsystem.spacing_sm
 import com.app.reserve.core.designsystem.spacing_xs
 import com.app.reserve.core.designsystem.spacing_xl
 import com.app.reserve.core.designsystem.spacing_xxl
+import com.app.reserve.core.domain.BackupManager
+import com.app.reserve.core.domain.BackupPreview
 import com.app.reserve.core.domain.Dates
 import com.app.reserve.core.domain.SmartImportAnalysis
 import com.app.reserve.core.domain.SmartImporter
@@ -102,6 +109,16 @@ import java.time.LocalDate
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+
+/** Top-level hub entries; details open one at a time to keep Settings short. */
+private enum class SettingsSection(val title: String) {
+    Appearance("Appearance"),
+    Sms("SMS automation"),
+    Privacy("Privacy"),
+    Updates("App updates"),
+    Organise("Organise"),
+    Data("Data")
+}
 
 @Composable
 fun SettingsScreen(
@@ -123,7 +140,8 @@ fun SettingsScreen(
     restoreBackup: suspend (String) -> Boolean,
     onBackupCreated: () -> Unit,
     localBackups: List<BackupCoordinator.BackupFile> = emptyList(),
-    onRestoreLocalBackup: (BackupCoordinator.BackupFile) -> Unit = {},
+    previewBackup: suspend (BackupCoordinator.BackupFile) -> BackupPreview? = { null },
+    onRestoreLocalBackup: suspend (BackupCoordinator.BackupFile) -> Boolean = { false },
     onBackupNow: () -> Unit = {},
     smsScanning: Boolean = false,
     smsScanMessage: String? = null,
@@ -131,6 +149,7 @@ fun SettingsScreen(
     updateChecking: Boolean = false,
     updateCheckMessage: String? = null,
     onToggleUpdateChecks: (Boolean) -> Unit = {},
+    onToggleSwipeToDelete: (Boolean) -> Unit = {},
     onCheckForUpdates: () -> Unit = {},
     onDismissUpdateCheckMessage: () -> Unit = {}
 ) {
@@ -141,15 +160,26 @@ fun SettingsScreen(
     var showIconPicker by remember { mutableStateOf(false) }
     var smartImportAnalysis by remember { mutableStateOf<SmartImportAnalysis?>(null) }
     var showRestoreSheet by remember { mutableStateOf(false) }
+    var pendingRestore by remember { mutableStateOf<PendingRestore?>(null) }
+    var csvStatus by remember { mutableStateOf<InlineStatus?>(null) }
+    var smartStatus by remember { mutableStateOf<InlineStatus?>(null) }
+    var backupStatus by remember { mutableStateOf<InlineStatus?>(null) }
+    var activeSection by remember { mutableStateOf<SettingsSection?>(null) }
+
+    // System back inside a detail view returns to the hub instead of leaving Settings.
+    BackHandler(enabled = activeSection != null) { activeSection = null }
+
+    val biometricUnlockAvailable = remember(context) {
+        BiometricManager.from(context).canAuthenticate(
+            BiometricManager.Authenticators.BIOMETRIC_WEAK or
+                BiometricManager.Authenticators.DEVICE_CREDENTIAL
+        ) == BiometricManager.BIOMETRIC_SUCCESS
+    }
 
     val packageVersion = remember {
         runCatching {
             context.packageManager.getPackageInfo(context.packageName, 0).versionName
         }.getOrNull() ?: "1.0.0"
-    }
-
-    fun toast(message: String) {
-        Toast.makeText(context, message, Toast.LENGTH_LONG).show()
     }
 
     fun readDocument(uri: android.net.Uri): String? = runCatching {
@@ -186,7 +216,10 @@ fun SettingsScreen(
                     } != null
                 }.getOrDefault(false)
             }
-            toast(if (ok) "CSV exported." else "Could not write that file.")
+            csvStatus = InlineStatus(
+                message = if (ok) "CSV exported." else "Could not write that CSV.",
+                isError = !ok
+            )
         }
     }
 
@@ -197,18 +230,17 @@ fun SettingsScreen(
         scope.launch {
             val text = withContext(Dispatchers.IO) { readDocument(uri) }
             if (text == null) {
-                toast("Could not read that file.")
+                csvStatus = InlineStatus("Could not read that file.", isError = true)
                 return@launch
             }
             val summary = importCsv(text)
-            toast(
-                if (summary.skipped < 0) {
-                    "That file is not a Reserve CSV."
-                } else {
-                    "Imported ${summary.imported} transactions" +
-                        if (summary.skipped > 0) ", skipped ${summary.skipped}." else "."
-                }
-            )
+            val message = if (summary.skipped < 0) {
+                "That file is not a Reserve CSV."
+            } else {
+                "Imported ${summary.imported} transactions" +
+                    if (summary.skipped > 0) ", skipped ${summary.skipped}." else "."
+            }
+            csvStatus = InlineStatus(message, isError = summary.skipped < 0)
         }
     }
 
@@ -219,14 +251,21 @@ fun SettingsScreen(
         scope.launch {
             val bytes = withContext(Dispatchers.IO) { readDocumentBytes(uri) }
             if (bytes == null) {
-                toast("Could not read that file, or it is larger than 20 MB.")
+                smartStatus = InlineStatus(
+                    "Could not read that file, or it is larger than 20 MB.",
+                    isError = true
+                )
                 return@launch
             }
             val analysis = withContext(Dispatchers.IO) { SmartImporter.analyze(bytes) }
             if (analysis.error != null) {
-                toast(analysis.error)
+                smartStatus = InlineStatus(analysis.error, isError = true)
             } else {
                 smartImportAnalysis = analysis
+                smartStatus = InlineStatus(
+                    "Preview ready: ${analysis.rows.size} rows from ${analysis.format.ifBlank { "file" }}.",
+                    isError = false
+                )
             }
         }
     }
@@ -244,12 +283,11 @@ fun SettingsScreen(
                     } != null
                 }.getOrDefault(false)
             }
-            if (ok) {
-                onBackupCreated()
-                toast("Backup saved.")
-            } else {
-                toast("Could not write that backup.")
-            }
+            if (ok) onBackupCreated()
+            backupStatus = InlineStatus(
+                message = if (ok) "Backup saved." else "Could not write that backup.",
+                isError = !ok
+            )
         }
     }
 
@@ -260,11 +298,15 @@ fun SettingsScreen(
         scope.launch {
             val text = withContext(Dispatchers.IO) { readDocument(uri) }
             if (text == null) {
-                toast("Could not read that file.")
+                backupStatus = InlineStatus("Could not read that file.", isError = true)
                 return@launch
             }
-            val restored = restoreBackup(text)
-            toast(if (restored) "Backup restored." else "That backup could not be read.")
+            val preview = BackupManager.preview(text, text.toByteArray().size.toLong()).getOrNull()
+            if (preview == null) {
+                backupStatus = InlineStatus("That backup could not be read.", isError = true)
+            } else {
+                pendingRestore = PendingRestore(file = null, text = text, preview = preview)
+            }
         }
     }
 
@@ -274,7 +316,14 @@ fun SettingsScreen(
             onDismiss = { showRestoreSheet = false },
             onRestore = { file ->
                 showRestoreSheet = false
-                onRestoreLocalBackup(file)
+                scope.launch {
+                    val preview = withContext(Dispatchers.IO) { previewBackup(file) }
+                    if (preview == null) {
+                        backupStatus = InlineStatus("Could not read that backup.", isError = true)
+                    } else {
+                        pendingRestore = PendingRestore(file = file, text = null, preview = preview)
+                    }
+                }
             },
             onImportFile = {
                 showRestoreSheet = false
@@ -286,13 +335,60 @@ fun SettingsScreen(
         )
     }
 
+    pendingRestore?.let { request ->
+        RestoreConfirmationDialog(
+            preview = request.preview,
+            onDismiss = { pendingRestore = null },
+            onConfirm = {
+                pendingRestore = null
+                scope.launch {
+                    val restored = if (request.text != null) {
+                        restoreBackup(request.text)
+                    } else {
+                        request.file?.let { onRestoreLocalBackup(it) } == true
+                    }
+                    backupStatus = InlineStatus(
+                        message = if (restored) "Backup restored." else "That backup could not be read.",
+                        isError = !restored
+                    )
+                }
+            }
+        )
+    }
+
     Column(modifier = Modifier.fillMaxSize()) {
         androidx.compose.foundation.lazy.LazyColumn(
             modifier = Modifier.fillMaxSize(),
             contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 108.dp)
         ) {
-            // Appearance block
-            item {
+            if (activeSection != null) {
+                val sectionTitle = activeSection?.title.orEmpty()
+                item {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = spacing_lg, vertical = spacing_md),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        IconButton(onClick = { activeSection = null }) {
+                            Icon(
+                                imageVector = Icons.Rounded.ChevronLeft,
+                                contentDescription = "Back",
+                                tint = colors.textBase
+                            )
+                        }
+                        Spacer(modifier = Modifier.size(spacing_sm))
+                        Text(
+                            text = sectionTitle,
+                            style = MaterialTheme.typography.titleLarge,
+                            color = colors.textBase
+                        )
+                    }
+                }
+            }
+
+            when (activeSection) {
+                SettingsSection.Appearance -> item {
                 SettingsSectionHeader(text = "APPEARANCE")
                 ReserveCard(modifier = Modifier.padding(horizontal = spacing_xxl)) {
                     Text(
@@ -414,8 +510,8 @@ fun SettingsScreen(
                 }
             }
 
-            // SMS automation block
-            item {
+
+                SettingsSection.Sms -> item {
                 SettingsSectionHeader(text = "SMS AUTOMATION")
                 ReserveCard(modifier = Modifier.padding(horizontal = spacing_xxl)) {
                     Row(
@@ -454,12 +550,10 @@ fun SettingsScreen(
                         style = MaterialTheme.typography.bodySmall,
                         color = colors.textBase
                     )
-                    if (smsScanMessage != null) {
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = smsScanMessage,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = colors.textLight
+                    smsScanMessage?.let { message ->
+                        InlineStatusLine(
+                            InlineStatus(message, isError = isFailureMessage(message)),
+                            modifier = Modifier.padding(top = 4.dp)
                         )
                     }
                     Spacer(modifier = Modifier.height(spacing_md))
@@ -486,8 +580,8 @@ fun SettingsScreen(
                 }
             }
 
-            // Privacy block
-            item {
+
+                SettingsSection.Privacy -> item {
                 SettingsSectionHeader(text = "PRIVACY")
                 ReserveCard(modifier = Modifier.padding(horizontal = spacing_xxl)) {
                     Row(
@@ -546,28 +640,19 @@ fun SettingsScreen(
                                 color = colors.textBase
                             )
                             Text(
-                                text = "Ask for your fingerprint or device PIN when Reserve opens.",
+                                text = if (biometricUnlockAvailable) {
+                                    "Ask for your fingerprint or device PIN when Reserve opens."
+                                } else {
+                                    "Set up a screen lock on this device to enable App Lock."
+                                },
                                 style = MaterialTheme.typography.bodySmall,
                                 color = colors.textLight
                             )
                         }
                         Switch(
                             checked = settings?.biometricLock == true,
-                            onCheckedChange = { enabled ->
-                                if (enabled) {
-                                    val available = BiometricManager.from(context).canAuthenticate(
-                                        BiometricManager.Authenticators.BIOMETRIC_WEAK or
-                                            BiometricManager.Authenticators.DEVICE_CREDENTIAL
-                                    ) == BiometricManager.BIOMETRIC_SUCCESS
-                                    if (!available) {
-                                        toast("Set up a screen lock on this device first.")
-                                    } else {
-                                        onToggleBiometric(true)
-                                    }
-                                } else {
-                                    onToggleBiometric(false)
-                                }
-                            },
+                            enabled = biometricUnlockAvailable,
+                            onCheckedChange = onToggleBiometric,
                             colors = SwitchDefaults.colors(
                                 checkedThumbColor = colors.textReverse,
                                 checkedTrackColor = colors.primaryDefault,
@@ -580,8 +665,8 @@ fun SettingsScreen(
                 }
             }
 
-            // App updates block
-            item {
+
+                SettingsSection.Updates -> item {
                 SettingsSectionHeader(text = "APP UPDATES")
                 ReserveCard(modifier = Modifier.padding(horizontal = spacing_xxl)) {
                     Row(
@@ -659,8 +744,8 @@ fun SettingsScreen(
                 }
             }
 
-            // Organise block
-            item {
+
+                SettingsSection.Organise -> item {
                 SettingsSectionHeader(text = "ORGANISE")
                 ReserveCard(modifier = Modifier.padding(horizontal = spacing_xxl)) {
                     SettingRow(
@@ -690,11 +775,47 @@ fun SettingsScreen(
                         value = "${state.recurring.count { !it.paused }}",
                         onClick = onOpenRecurring
                     )
+                    ReserveDivider()
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.DeleteOutline,
+                            contentDescription = null,
+                            tint = colors.primaryDefault,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.size(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Swipe to delete",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = colors.textBase
+                            )
+                            Text(
+                                text = "Off by default. Turn on to swipe a transaction into Trash.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = colors.textLight
+                            )
+                        }
+                        Switch(
+                            checked = settings?.swipeToDeleteEnabled == true,
+                            onCheckedChange = onToggleSwipeToDelete,
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = colors.textReverse,
+                                checkedTrackColor = colors.primaryDefault,
+                                uncheckedThumbColor = colors.textLighter,
+                                uncheckedTrackColor = colors.fillDark,
+                                uncheckedBorderColor = colors.strokeFaint
+                            )
+                        )
+                    }
                 }
             }
 
-            // Data block
-            item {
+
+                SettingsSection.Data -> item {
                 SettingsSectionHeader(text = "DATA")
                 ReserveCard(modifier = Modifier.padding(horizontal = spacing_xxl)) {
                     SettingRow(
@@ -714,6 +835,10 @@ fun SettingsScreen(
                             importLauncher.launch(arrayOf("text/csv", "text/comma-separated-values", "text/plain"))
                         }
                     )
+                    InlineStatusLine(
+                        csvStatus,
+                        modifier = Modifier.padding(horizontal = spacing_xl, vertical = spacing_xs)
+                    )
                     ReserveDivider()
                     SettingRow(
                         icon = Icons.Rounded.Description,
@@ -728,6 +853,10 @@ fun SettingsScreen(
                                 )
                             )
                         }
+                    )
+                    InlineStatusLine(
+                        smartStatus,
+                        modifier = Modifier.padding(horizontal = spacing_xl, vertical = spacing_xs)
                     )
                     ReserveDivider()
                     SettingRow(
@@ -744,6 +873,10 @@ fun SettingsScreen(
                         label = "Restore backup",
                         value = if (localBackups.isEmpty()) "Import a file" else "${localBackups.size} local",
                         onClick = { showRestoreSheet = true }
+                    )
+                    InlineStatusLine(
+                        backupStatus,
+                        modifier = Modifier.padding(horizontal = spacing_xl, vertical = spacing_xs)
                     )
                     ReserveDivider()
                     SettingRow(
@@ -765,7 +898,77 @@ fun SettingsScreen(
                 }
             }
 
-            item {
+                null -> {
+                    val lastSms = settings?.lastSmsScanAt ?: 0L
+                    val lastBackup = settings?.lastBackupAt ?: 0L
+                    item {
+                        Text(
+                            text = "SETTINGS",
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Bold
+                            ),
+                            color = colors.textLighter,
+                            modifier = Modifier.padding(
+                                horizontal = spacing_xxl,
+                                vertical = spacing_md
+                            )
+                        )
+                        ReserveCard(modifier = Modifier.padding(horizontal = spacing_xxl)) {
+                            SettingRow(
+                                icon = Icons.Rounded.Palette,
+                                label = "Appearance",
+                                value = (settings?.themeMode ?: ThemeMode.SYSTEM).name
+                                    .lowercase().replaceFirstChar { it.uppercase() },
+                                onClick = { activeSection = SettingsSection.Appearance }
+                            )
+                            ReserveDivider()
+                            SettingRow(
+                                icon = Icons.Rounded.Sms,
+                                label = "SMS automation",
+                                value = if (lastSms == 0L) "Not scanned yet" else Dates.fullDate(lastSms),
+                                onClick = { activeSection = SettingsSection.Sms }
+                            )
+                            ReserveDivider()
+                            SettingRow(
+                                icon = Icons.Rounded.Lock,
+                                label = "Privacy",
+                                value = buildList {
+                                    if (settings?.hideAmounts == true) add("Amounts hidden")
+                                    if (settings?.biometricLock == true) add("App Lock")
+                                }.ifEmpty { listOf("On-device") }.joinToString(", "),
+                                onClick = { activeSection = SettingsSection.Privacy }
+                            )
+                            ReserveDivider()
+                            SettingRow(
+                                icon = Icons.Rounded.Description,
+                                label = "Organise",
+                                value = "${state.categories.size} categories · " +
+                                    if (settings?.swipeToDeleteEnabled == true) "swipe on" else "swipe off",
+                                onClick = { activeSection = SettingsSection.Organise }
+                            )
+                            ReserveDivider()
+                            SettingRow(
+                                icon = Icons.Rounded.Backup,
+                                label = "Data",
+                                value = if (lastBackup == 0L) {
+                                    "Backup & import"
+                                } else {
+                                    "Backed up ${Dates.fullDate(lastBackup)}"
+                                },
+                                onClick = { activeSection = SettingsSection.Data }
+                            )
+                            ReserveDivider()
+                            SettingRow(
+                                icon = Icons.Rounded.SystemUpdate,
+                                label = "App updates",
+                                value = if (settings?.updateChecksEnabled == false) "Checks off" else "Automatic",
+                                onClick = { activeSection = SettingsSection.Updates }
+                            )
+                        }
+                    }
+
+                    item {
                 val uriHandler = LocalUriHandler.current
                 Column(
                     modifier = Modifier
@@ -804,6 +1007,8 @@ fun SettingsScreen(
                     )
                 }
             }
+                    }
+                }
         }
     }
 
@@ -828,7 +1033,42 @@ fun SettingsScreen(
             analysis = analysis,
             onDismiss = { smartImportAnalysis = null },
             onImport = smartImport,
-            onResult = { toast(it) }
+            onResult = { result ->
+                smartStatus = InlineStatus(result, isError = isFailureMessage(result))
+            }
+        )
+    }
+}
+
+private data class InlineStatus(val message: String, val isError: Boolean)
+
+private data class PendingRestore(
+    val file: BackupCoordinator.BackupFile?,
+    val text: String?,
+    val preview: BackupPreview
+)
+
+private fun isFailureMessage(message: String): Boolean =
+    message.startsWith("Could not") || message.startsWith("No ") || message.startsWith("That ")
+
+@Composable
+private fun InlineStatusLine(status: InlineStatus?, modifier: Modifier = Modifier) {
+    if (status == null) return
+    val colors = LocalReserveColors.current
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+        color = colors.fillLight,
+        border = BorderStroke(
+            width = 1.dp,
+            color = if (status.isError) colors.warningDefault.copy(alpha = 0.35f) else colors.strokeFaint
+        )
+    ) {
+        Text(
+            text = status.message,
+            style = MaterialTheme.typography.labelSmall,
+            color = if (status.isError) colors.warningDefault else colors.textLight,
+            modifier = Modifier.padding(horizontal = spacing_md, vertical = spacing_sm)
         )
     }
 }
@@ -1210,8 +1450,8 @@ private fun ThemeOption(
     val colors = LocalReserveColors.current
     Surface(
         modifier = modifier
-            .height(40.dp)
-            .clickable(onClick = onClick),
+            .heightIn(min = 48.dp)
+            .clickable(onClick = onClick, onClickLabel = label, role = Role.Button),
         shape = RoundedCornerShape(radius_md),
         color = if (selected) colors.primaryDefault.copy(alpha = 0.12f) else colors.fillLight,
         border = if (selected) BorderStroke(1.dp, colors.primaryDefault) else null

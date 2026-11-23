@@ -56,6 +56,22 @@ object BackupManager {
         decodeBundle(text).getOrThrow().snapshot
     }
 
+    /**
+     * Lightweight inspection for the restore confirmation. Counts come straight
+     * from the DTO, so even a very old backup can be previewed without mapping
+     * every row into entities.
+     */
+    fun preview(text: String, sizeBytes: Long = 0L): Result<BackupPreview> = runCatching {
+        val dto = json.decodeFromString<BackupDto>(text)
+        require(dto.version <= CURRENT_VERSION) { "This backup was created by a newer version of Reserve." }
+        BackupPreview(
+            exportedAt = dto.exportedAt,
+            transactionCount = dto.transactions.size,
+            accountCount = dto.accounts.size,
+            sizeBytes = sizeBytes.coerceAtLeast(0L)
+        )
+    }
+
     /** Decodes both the ledger and the settings (null for legacy backups). */
     fun decodeBundle(text: String): Result<BackupBundle> = runCatching {
         val dto = json.decodeFromString<BackupDto>(text)
@@ -73,6 +89,14 @@ object BackupManager {
         )
     }
 }
+
+/** What the user sees before a restore is allowed to replace the ledger. */
+data class BackupPreview(
+    val exportedAt: Long,
+    val transactionCount: Int,
+    val accountCount: Int,
+    val sizeBytes: Long
+)
 
 /** The complete decoded content of a backup file. */
 data class BackupBundle(

@@ -10,6 +10,8 @@ import com.app.reserve.core.database.TransactionType
 import com.app.reserve.core.datastore.ReserveSettings
 import com.app.reserve.core.datastore.ThemeMode
 import org.junit.Assert.assertEquals
+import kotlinx.serialization.json.Json
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -134,5 +136,35 @@ class BackupManagerTest {
     @Test
     fun `garbage is rejected without throwing`() {
         assertTrue(BackupManager.decode("not json").isFailure)
+    }
+
+    @Test
+    fun `restore preview reports date counts and size`() {
+        val text = BackupManager.encode(snapshot, now = 8_000L)
+        val preview = BackupManager.preview(text, sizeBytes = 4_096L).getOrThrow()
+
+        assertEquals(8_000L, preview.exportedAt)
+        assertEquals(1, preview.transactionCount)
+        assertEquals(1, preview.accountCount)
+        assertEquals(4_096L, preview.sizeBytes)
+    }
+
+    @Test
+    fun `swipe-to-delete preference round-trips and old backups stay off`() {
+        val settings = ReserveSettings(swipeToDeleteEnabled = true)
+        val restored = BackupManager.decodeBundle(
+            BackupManager.encode(snapshot, settings, now = 4_000L)
+        ).getOrThrow().settings
+        assertEquals(true, restored?.swipeToDeleteEnabled)
+
+        // v1/v2/v3 payloads have no such key, so kotlinx fills the safe default.
+        assertFalse(Json.decodeFromString<com.app.reserve.core.datastore.BackupSettings>("{}").swipeToDeleteEnabled)
+    }
+
+    @Test
+    fun `restore preview rejects newer backups like restore does`() {
+        val text = BackupManager.encode(snapshot)
+            .replace("\"version\": ${BackupManager.CURRENT_VERSION}", "\"version\": 99")
+        assertTrue(BackupManager.preview(text).isFailure)
     }
 }

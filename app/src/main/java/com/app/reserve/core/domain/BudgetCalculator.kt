@@ -4,6 +4,7 @@ import com.app.reserve.core.database.BudgetEntity
 import com.app.reserve.core.database.CategoryEntity
 import com.app.reserve.core.database.TransactionEntity
 import com.app.reserve.core.database.TransactionType
+import java.time.LocalDate
 
 /** Budget maths on Long minor units; no floating point is used for money. */
 object BudgetCalculator {
@@ -41,6 +42,47 @@ object BudgetCalculator {
             spentForCategory(transactions, budget.monthYear, budget.categoryId)
         }
         return BudgetProgress(budget, spent)
+    }
+
+    /**
+     * Compares actual spend with an even pace through the month. A budget for a
+     * past or future month is reported with the full month elapsed so the UI
+     * never claims a "today" pace for a month that is not in progress.
+     */
+    fun pace(
+        budget: BudgetEntity,
+        transactions: List<TransactionEntity>,
+        today: LocalDate = Dates.today()
+    ): BudgetPace {
+        val first = Dates.monthDate(budget.monthYear)
+        val daysInMonth = first.lengthOfMonth()
+        val elapsedDays = when {
+            today < first -> 0
+            Dates.monthKey(today) != budget.monthYear -> daysInMonth
+            else -> today.dayOfMonth
+        }
+        // Exact floor division in minor units: (a * n) / d without overflow.
+        val perDay = budget.amount / daysInMonth
+        val remainder = budget.amount % daysInMonth
+        val expected = perDay * elapsedDays + (remainder * elapsedDays) / daysInMonth
+        return BudgetPace(progress(budget, transactions), elapsedDays, daysInMonth, expected)
+    }
+
+    /**
+     * Top slices plus one "Other" slice, so the donut and its legend always
+     * describe the same set of expenses.
+     */
+    fun groupedBreakdown(
+        transactions: List<TransactionEntity>,
+        monthYear: String,
+        categories: List<CategoryEntity>,
+        maxSlices: Int = 7
+    ): List<CategorySpend> {
+        val rows = breakdown(transactions, monthYear, categories)
+        if (rows.size <= maxSlices) return rows
+        val head = rows.take(maxSlices - 1)
+        val tail = rows.drop(maxSlices - 1).sumOf { it.spent }
+        return head + CategorySpend(null, CategorySpend.OTHER_ID, tail)
     }
 
     /** Categories with the most spending first. */
@@ -96,10 +138,28 @@ data class BudgetProgress(val budget: BudgetEntity, val spent: Long) {
     val isWarning: Boolean get() = !isOver && ratio >= 0.9f
 }
 
+data class BudgetPace(
+    val progress: BudgetProgress,
+    val elapsedDays: Int,
+    val daysInMonth: Int,
+    val expectedSpent: Long
+) {
+    /** Money spent above an even day-by-day pace; negative means under pace. */
+    val delta: Long get() = progress.spent - expectedSpent
+    val isAhead: Boolean get() = delta > 0L
+    val isCurrentMonth: Boolean get() = progress.budget.monthYear == Dates.currentMonthKey()
+}
+
 data class CategorySpend(
     val category: CategoryEntity?,
     val categoryId: String?,
     val spent: Long
-)
+) {
+    companion object {
+        const val OTHER_ID = "__other__"
+    }
+
+    val isOther: Boolean get() = categoryId == OTHER_ID
+}
 
 data class MonthTotal(val monthYear: String, val label: String, val spent: Long, val income: Long)

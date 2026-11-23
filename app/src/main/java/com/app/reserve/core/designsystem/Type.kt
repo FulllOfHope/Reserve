@@ -13,8 +13,10 @@ val InterFamily = FontFamily(
     Font(R.font.inter_regular, FontWeight.Normal),
     Font(R.font.inter_medium, FontWeight.Medium),
     Font(R.font.inter_semibold, FontWeight.SemiBold),
-    Font(R.font.inter_semibold, FontWeight.Bold), // Assuming bold is mapped to semibold for now if no font file, or we can use FontWeight.Bold. Ente uses ExtraBold, Bold, SemiBold, Medium.
-    Font(R.font.inter_semibold, FontWeight.ExtraBold) // Placeholder map if the font weight is missing
+    // Only Regular, Medium and Semibold are bundled; heavier weights resolve
+    // to Semibold instead of downloading a font at runtime.
+    Font(R.font.inter_semibold, FontWeight.Bold),
+    Font(R.font.inter_semibold, FontWeight.ExtraBold)
 )
 
 // Define Ente typography scale explicitly
@@ -79,7 +81,7 @@ val ReserveTypography = Typography(
     bodyMedium = BodyText,
     labelLarge = LargeText,
     labelMedium = MiniText,
-    labelSmall = MiniText
+    labelSmall = TinyText
 )
 
 /** Every money value uses tabular figures so digits never shift. */

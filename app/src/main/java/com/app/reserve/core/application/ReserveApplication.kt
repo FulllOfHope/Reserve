@@ -66,8 +66,8 @@ class ReserveApplication : Application() {
 class AppContainer(application: Application) {
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     val database: ReserveDatabase = ReserveDatabase.get(application)
-    val repository = ReserveRepository(database)
     val settings = SettingsDataStore(application)
+    val repository = ReserveRepository(database, settings)
     val smsImporter = SmsImporter(application, repository, settings)
     val updateChecker = GitHubUpdateChecker(currentVersion = installedVersion(application))
     val updateNotifier = UpdateNotifier(application)

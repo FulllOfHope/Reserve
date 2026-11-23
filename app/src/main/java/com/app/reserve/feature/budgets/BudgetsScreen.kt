@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -36,6 +37,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.app.reserve.core.database.BudgetEntity
@@ -51,6 +53,7 @@ import com.app.reserve.core.designsystem.SectionLabel
 import com.app.reserve.core.designsystem.formatMoney
 import com.app.reserve.core.designsystem.tabular
 import com.app.reserve.core.domain.BudgetCalculator
+import com.app.reserve.core.domain.BudgetPace
 import com.app.reserve.core.domain.Dates
 import com.app.reserve.core.domain.Money
 import com.app.reserve.feature.ledger.LedgerState
@@ -63,11 +66,19 @@ fun BudgetsScreen(
     onDeleteBudget: (String) -> Unit,
     onPreviousMonth: () -> Unit,
     onNextMonth: () -> Unit,
+    onGoToToday: () -> Unit = {},
     onBack: () -> Unit
 ) {
     val colors = LocalReserveColors.current
     var editing by remember { mutableStateOf<BudgetEntity?>(null) }
     var adding by remember { mutableStateOf(false) }
+    var pendingDelete by remember { mutableStateOf<Pair<String, String>?>(null) }
+
+    fun requestDelete(id: String, name: String) {
+        pendingDelete = id to name
+        editing = null
+        adding = false
+    }
 
     val budgets = state.monthBudgets
     val expenseCategories = state.categories.filter {
@@ -87,7 +98,8 @@ fun BudgetsScreen(
         MonthSwitcher(
             monthYear = state.monthYear,
             onPrevious = onPreviousMonth,
-            onNext = onNextMonth
+            onNext = onNextMonth,
+            onToday = onGoToToday
         )
 
         LazyColumn(
@@ -133,9 +145,11 @@ fun BudgetsScreen(
                         name = name,
                         spent = progress.spent,
                         limit = budget.amount,
+                        pace = BudgetCalculator.pace(budget, state.visibleTransactions)
+                            .takeIf { it.isCurrentMonth },
                         isOver = progress.isOver,
                         onClick = { editing = budget },
-                        onDelete = { onDeleteBudget(budget.id) }
+                        onDelete = { requestDelete(budget.id, name) }
                     )
                 }
             }
@@ -166,8 +180,38 @@ fun BudgetsScreen(
                 editing = null
             },
             onDelete = {
-                editing?.let { onDeleteBudget(it.id) }
-                editing = null
+                editing?.let { budget ->
+                    val label = budget.categoryId
+                        ?.let { state.categoryFor(it)?.name }
+                        ?: "All expenses"
+                    requestDelete(budget.id, label)
+                }
+            }
+        )
+    }
+
+    pendingDelete?.let { (id, name) ->
+        AlertDialog(
+            onDismissRequest = { pendingDelete = null },
+            containerColor = colors.fillLight,
+            titleContentColor = colors.textBase,
+            textContentColor = colors.textLight,
+            title = { Text("Delete $name?") },
+            text = {
+                Text("This budget and its monthly limit will be removed. Your transactions stay in the ledger.")
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    onDeleteBudget(id)
+                    pendingDelete = null
+                }) {
+                    Text("Delete", color = colors.warningDefault)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDelete = null }) {
+                    Text("Keep", color = colors.textLight)
+                }
             }
         )
     }
@@ -178,6 +222,7 @@ private fun BudgetRow(
     name: String,
     spent: Long,
     limit: Long,
+    pace: BudgetPace? = null,
     isOver: Boolean,
     onClick: () -> Unit,
     onDelete: () -> Unit
@@ -193,7 +238,8 @@ private fun BudgetRow(
         Column(
             modifier = Modifier
                 .weight(1f)
-                .clickable(onClick = onClick)
+                .heightIn(min = 48.dp)
+                .clickable(onClick = onClick, onClickLabel = "Edit $name budget", role = Role.Button)
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
@@ -214,6 +260,18 @@ private fun BudgetRow(
             }
             Spacer(modifier = Modifier.height(6.dp))
             BudgetBar(spent = spent, limit = limit)
+            if (pace != null) {
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = when {
+                        pace.isAhead -> "${formatMoney(pace.delta, amountsHidden)} ahead of pace"
+                        pace.delta < 0L -> "${formatMoney(-pace.delta, amountsHidden)} under pace"
+                        else -> "Right on pace"
+                    },
+                    style = MaterialTheme.typography.labelSmall.tabular(),
+                    color = if (pace.isAhead) colors.warningDefault else colors.primaryDefault
+                )
+            }
             Spacer(modifier = Modifier.height(6.dp))
             Row(modifier = Modifier.fillMaxWidth()) {
                 Text(
@@ -229,7 +287,7 @@ private fun BudgetRow(
                 )
             }
         }
-        IconButton(onClick = onDelete, modifier = Modifier.size(36.dp)) {
+        IconButton(onClick = onDelete) {
             Icon(
                 imageVector = Icons.Rounded.DeleteOutline,
                 contentDescription = "Delete budget",

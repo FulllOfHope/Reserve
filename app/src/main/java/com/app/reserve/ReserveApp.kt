@@ -39,10 +39,12 @@ import androidx.compose.material.icons.outlined.Repeat
 import androidx.compose.material.icons.outlined.Restore
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.CalendarMonth
 import androidx.compose.material.icons.rounded.Menu
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.NavigationDrawerItem
@@ -69,12 +71,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import androidx.glance.appwidget.updateAll
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -93,8 +99,12 @@ import com.app.reserve.core.backup.BackupCoordinator
 import com.app.reserve.core.backup.BackupScheduler
 import com.app.reserve.core.database.TransactionEntity
 import com.app.reserve.core.database.TransactionType
+import com.app.reserve.core.domain.BackupManager
+import com.app.reserve.core.domain.BackupPreview
+import com.app.reserve.core.domain.OnboardingGate
 import com.app.reserve.core.domain.SmartImportAnalysis
 import com.app.reserve.core.domain.SmartImporter
+import com.app.reserve.core.domain.SmsScanWindow
 import com.app.reserve.core.designsystem.LocalReserveColors
 import com.app.reserve.core.designsystem.ReserveTheme
 import com.app.reserve.core.designsystem.spacing_lg
@@ -104,15 +114,20 @@ import com.app.reserve.core.datastore.ThemeMode
 import com.app.reserve.feature.add.AddTransactionScreen
 import com.app.reserve.feature.budgets.BudgetsScreen
 import com.app.reserve.feature.home.HomeScreen
+import com.app.reserve.feature.home.SpendingCalendarSheet
 import com.app.reserve.feature.insights.InsightsScreen
 import com.app.reserve.feature.ledger.LedgerViewModel
 import com.app.reserve.feature.manage.AccountsScreen
 import com.app.reserve.feature.manage.CategoriesScreen
 import com.app.reserve.feature.manage.RecurringScreen
+import com.app.reserve.feature.onboarding.WelcomeSheet
 import com.app.reserve.feature.settings.RestoreBackupSheet
+import com.app.reserve.feature.settings.RestoreConfirmationDialog
 import com.app.reserve.feature.settings.SettingsScreen
 import com.app.reserve.feature.settings.SettingsViewModel
+import com.app.reserve.ui.BottomBarMetrics
 import com.app.reserve.feature.settings.SmartImportSheet
+import com.app.reserve.feature.sms.BalanceVerificationSheet
 import com.app.reserve.feature.trash.TrashScreen
 import com.app.reserve.feature.transactions.TransactionsScreen
 import com.app.reserve.feature.update.UpdateSheet
@@ -124,6 +139,7 @@ import com.app.reserve.ui.Routes
 import java.io.ByteArrayOutputStream
 import java.time.LocalDate
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -272,7 +288,18 @@ fun ReserveApp(
         }
 
         if (settings == null) {
-            Box(modifier = Modifier.fillMaxSize().background(colors.fillBase))
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(colors.fillBase),
+                contentAlignment = Alignment.Center
+            ) {
+                CircularProgressIndicator(
+                    color = colors.primaryDefault,
+                    strokeWidth = 2.dp,
+                    modifier = Modifier.size(28.dp)
+                )
+            }
             return@ReserveTheme
         }
 
@@ -281,18 +308,44 @@ fun ReserveApp(
             biometricAvailable &&
             !lock.unlocked
 
-        if (locked) {
-            AppLockScreen(onUnlocked = { lock.unlocked = true })
-        } else {
-            MainNavigation(
-                state = state,
-                ledgerViewModel = ledgerViewModel,
-                settingsViewModel = settingsViewModel,
-                initialOpenAddSheet = initialOpenAddSheet,
-                onOpenAddSheetConsumed = onOpenAddSheetConsumed,
-                updateChecking = updateChecking,
-                updateCheckMessage = updateCheckMessage
-            )
+        // MainNavigation stays mounted behind the lock so navigation/state are
+        // not torn down and rebuilt on every unlock. While locked it is hidden
+        // from TalkBack, and the opaque overlay consumes every pointer event.
+        Box(modifier = Modifier.fillMaxSize()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .then(if (locked) Modifier.clearAndSetSemantics { } else Modifier)
+            ) {
+                MainNavigation(
+                    state = state,
+                    ledgerViewModel = ledgerViewModel,
+                    settingsViewModel = settingsViewModel,
+                    initialOpenAddSheet = initialOpenAddSheet,
+                    onOpenAddSheetConsumed = onOpenAddSheetConsumed,
+                    updateChecking = updateChecking,
+                    updateCheckMessage = updateCheckMessage
+                )
+            }
+
+            if (locked) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(colors.fillBase)
+                        .pointerInput(Unit) {
+                            awaitPointerEventScope {
+                                while (true) {
+                                    awaitPointerEvent(PointerEventPass.Initial)
+                                        .changes
+                                        .forEach { it.consume() }
+                                }
+                            }
+                        }
+                ) {
+                    AppLockScreen(onUnlocked = { lock.unlocked = true })
+                }
+            }
         }
 
         // Deliberately outside the lock branch: a notification tap should show
@@ -348,7 +401,28 @@ private fun MainNavigation(
     }
     var localBackups by remember { mutableStateOf(emptyList<BackupCoordinator.BackupFile>()) }
     var showDrawerRestoreSheet by remember { mutableStateOf(false) }
+    var showSpendingCalendar by remember { mutableStateOf(false) }
+    var pendingDrawerRestore by remember { mutableStateOf<PendingDrawerRestore?>(null) }
     val settingsFlow by settingsViewModel.settings.collectAsStateWithLifecycle()
+    val pendingDiscrepancies by ledgerViewModel.pendingBalanceDiscrepancies
+        .collectAsStateWithLifecycle()
+    var onboardingDismissed by rememberSaveable { mutableStateOf(false) }
+    val smsPermissionGranted = ContextCompat.checkSelfPermission(
+        context,
+        android.Manifest.permission.READ_SMS
+    ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+
+    // Every existing-install signal suppresses onboarding. Only a genuinely
+    // empty, permission-less install sees the welcome sheet.
+    val showWelcome = settingsFlow?.let { current ->
+        !onboardingDismissed && OnboardingGate.shouldShowWelcome(
+            hasCompletedOnboarding = current.hasCompletedOnboarding,
+            lastSmsScanAt = current.lastSmsScanAt,
+            smsPermissionGranted = smsPermissionGranted,
+            hasTransactions = state.transactions.isNotEmpty()
+        )
+    } ?: false
+
     LaunchedEffect(settingsFlow?.lastBackupAt) {
         localBackups = withContext(Dispatchers.IO) { backupCoordinator.listLocalBackups() }
     }
@@ -498,19 +572,25 @@ private fun MainNavigation(
         }
     }
 
-    val restoreFromLocal: (BackupCoordinator.BackupFile) -> Unit = { file ->
-        scope.launch {
-            val text = withContext(Dispatchers.IO) { backupCoordinator.readBackup(file) }
-            if (text == null) {
-                toast("Could not read that backup.")
-                return@launch
-            }
+    val restoreFromLocal: suspend (BackupCoordinator.BackupFile) -> Boolean = { file ->
+        val text = withContext(Dispatchers.IO) { backupCoordinator.readBackup(file) }
+        if (text == null) {
+            false
+        } else {
             val restored = ledgerViewModel.restoreBackup(text)
             if (restored) {
                 backupCoordinator.restoreSettingsOnly(text)
                 localBackups = withContext(Dispatchers.IO) { backupCoordinator.listLocalBackups() }
             }
-            toast(if (restored) "Backup restored." else "That backup could not be read.")
+            restored
+        }
+    }
+
+    val previewRestore: suspend (BackupCoordinator.BackupFile) -> BackupPreview? = { file ->
+        withContext(Dispatchers.IO) {
+            backupCoordinator.readBackup(file)?.let { text ->
+                BackupManager.preview(text, file.sizeBytes).getOrNull()
+            }
         }
     }
 
@@ -531,18 +611,16 @@ private fun MainNavigation(
         }
     }
 
-    LaunchedEffect(Unit) {
-        if (androidx.core.content.ContextCompat.checkSelfPermission(
-                context,
+    // Do not stack the system permission dialog on the welcome sheet, or nag
+    // a user who chose manual setup / "Not now". Settings can still request it.
+    LaunchedEffect(showWelcome) {
+        if (showWelcome || onboardingDismissed || smsPermissionGranted) return@LaunchedEffect
+        smsPermissionLauncher.launch(
+            arrayOf(
+                android.Manifest.permission.RECEIVE_SMS,
                 android.Manifest.permission.READ_SMS
-            ) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-            smsPermissionLauncher.launch(
-                arrayOf(
-                    android.Manifest.permission.RECEIVE_SMS,
-                    android.Manifest.permission.READ_SMS
-                )
             )
-        }
+        )
     }
 
     // Ask for permission on first use, otherwise scan immediately. The
@@ -576,11 +654,34 @@ private fun MainNavigation(
         }
     }
 
+    var undoSnackbarJob by remember { mutableStateOf<Job?>(null) }
+
+    val onFullyDelete: (TransactionEntity) -> Unit = { transaction ->
+        undoSnackbarJob?.cancel()
+        snackbarHostState.currentSnackbarData?.dismiss()
+        ledgerViewModel.deleteForever(transaction)
+        scope.launch {
+            snackbarHostState.showSnackbar("Transaction deleted permanently")
+        }
+    }
+
+    val onEmptyTrash: () -> Unit = {
+        undoSnackbarJob?.cancel()
+        snackbarHostState.currentSnackbarData?.dismiss()
+        ledgerViewModel.emptyTrash()
+        scope.launch {
+            snackbarHostState.showSnackbar("Trash emptied")
+        }
+    }
+
     val onDelete: (TransactionEntity) -> Unit = { transaction ->
         // Soft-delete first: the row leaves the ledger and its balance reverses
-        // immediately, but a Undo tap can still bring it back exactly as it was.
+        // immediately, but an Undo tap can still bring it back exactly as it was.
         ledgerViewModel.requestDelete(transaction)
-        scope.launch {
+        // A newer delete replaces the old Undo so it cannot restore the wrong row.
+        undoSnackbarJob?.cancel()
+        snackbarHostState.currentSnackbarData?.dismiss()
+        undoSnackbarJob = scope.launch {
             val result = snackbarHostState.showSnackbar(
                 message = "Transaction moved to Trash",
                 actionLabel = "Undo",
@@ -589,6 +690,15 @@ private fun MainNavigation(
             if (result == SnackbarResult.ActionPerformed) {
                 ledgerViewModel.undoDelete(transaction)
             }
+            snackbarHostState.currentSnackbarData?.dismiss()
+        }
+    }
+
+    // Leaving the ledger cancels any stale Undo prompt.
+    LaunchedEffect(currentRoute) {
+        if (currentRoute != Routes.Home && currentRoute != Routes.Transactions) {
+            undoSnackbarJob?.cancel()
+            snackbarHostState.currentSnackbarData?.dismiss()
         }
     }
 
@@ -646,13 +756,98 @@ private fun MainNavigation(
             onDismiss = { showDrawerRestoreSheet = false },
             onRestore = { file ->
                 showDrawerRestoreSheet = false
-                restoreFromLocal(file)
+                scope.launch {
+                    val preview = previewRestore(file)
+                    if (preview == null) {
+                        toast("Could not read that backup.")
+                    } else {
+                        pendingDrawerRestore = PendingDrawerRestore(file, preview)
+                    }
+                }
             },
             onImportFile = {
                 showDrawerRestoreSheet = false
                 restoreLauncher.launch(arrayOf("application/json", "text/plain"))
             },
             onBackupNow = backupNow
+        )
+    }
+
+    pendingDrawerRestore?.let { request ->
+        RestoreConfirmationDialog(
+            preview = request.preview,
+            onDismiss = { pendingDrawerRestore = null },
+            onConfirm = {
+                pendingDrawerRestore = null
+                scope.launch {
+                    toast(
+                        if (restoreFromLocal(request.file)) {
+                            "Backup restored."
+                        } else {
+                            "That backup could not be read."
+                        }
+                    )
+                }
+            }
+        )
+    }
+
+    if (showWelcome) {
+        WelcomeSheet(
+            defaultScanStartEpochMs = SmsScanWindow.defaultMonthStart(System.currentTimeMillis()),
+            onSmsSetup = { scanStart ->
+                onboardingDismissed = true
+                scope.launch { application.container.settings.completeOnboarding(scanStart) }
+                if (smsPermissionGranted) {
+                    settingsViewModel.scanSms()
+                } else {
+                    smsPermissionLauncher.launch(
+                        arrayOf(
+                            android.Manifest.permission.RECEIVE_SMS,
+                            android.Manifest.permission.READ_SMS
+                        )
+                    )
+                }
+            },
+            onManualSetup = {
+                onboardingDismissed = true
+                scope.launch {
+                    application.container.settings.completeOnboarding(
+                        SmsScanWindow.defaultMonthStart(System.currentTimeMillis())
+                    )
+                }
+                navController.navigate(Routes.add(TransactionType.EXPENSE.name))
+            },
+            onDismiss = { onboardingDismissed = true }
+        )
+    }
+
+    // Persisted queue: one account at a time, newest alert first. Resolving or
+    // skipping advances to the next account on the next recomposition.
+    val currentDiscrepancy = pendingDiscrepancies.firstOrNull()
+    if (!showWelcome && currentDiscrepancy != null) {
+        BalanceVerificationSheet(
+            discrepancy = currentDiscrepancy,
+            position = pendingDiscrepancies.indexOf(currentDiscrepancy) + 1,
+            total = pendingDiscrepancies.size,
+            onPostDifference = {
+                ledgerViewModel.resolveBalanceDiscrepancy(currentDiscrepancy, true)
+            },
+            onUseBankBalance = {
+                ledgerViewModel.resolveBalanceDiscrepancy(currentDiscrepancy, false)
+            },
+            onSetManualBalance = { amount ->
+                ledgerViewModel.resolveBalanceDiscrepancy(
+                    currentDiscrepancy.copy(
+                        smsBalanceMinor = amount,
+                        differenceMinor = amount - currentDiscrepancy.reserveBalanceMinor
+                    ),
+                    false
+                )
+            },
+            onSkip = {
+                ledgerViewModel.dismissBalanceDiscrepancy(currentDiscrepancy.accountId)
+            }
         )
     }
 
@@ -773,7 +968,11 @@ private fun MainNavigation(
                     hostState = snackbarHostState,
                     modifier = Modifier
                         .navigationBarsPadding()
-                        .padding(start = spacing_lg, end = spacing_lg, bottom = 88.dp)
+                        .padding(
+                            start = spacing_lg,
+                            end = spacing_lg,
+                            bottom = BottomBarMetrics.clearance + spacing_md
+                        )
                 ) { data ->
                     Surface(
                         shape = RoundedCornerShape(12.dp),
@@ -853,10 +1052,19 @@ private fun MainNavigation(
                                     color = colors.textBase,
                                     modifier = Modifier.weight(1f)
                                 )
+                                if (pagerState.currentPage == 0) {
+                                    IconButton(onClick = { showSpendingCalendar = true }) {
+                                        Icon(
+                                            imageVector = Icons.Rounded.CalendarMonth,
+                                            contentDescription = "Spending calendar",
+                                            tint = colors.textBase
+                                        )
+                                    }
+                                }
                                 IconButton(onClick = { navController.navigate(Routes.add(TransactionType.EXPENSE.name)) }) {
                                     Icon(
                                         imageVector = Icons.Rounded.Add,
-                                        contentDescription = "Add Expense",
+                                        contentDescription = "Add expense",
                                         tint = colors.textBase
                                     )
                                 }
@@ -878,6 +1086,7 @@ private fun MainNavigation(
                                         onOpenBudgets = { navController.navigate(Routes.Budgets) },
                                         onPreviousMonth = { ledgerViewModel.shiftMonth(-1) },
                                         onNextMonth = { ledgerViewModel.shiftMonth(1) },
+                                        onGoToToday = { ledgerViewModel.goToCurrentMonth() },
                                         onOpenMenu = { scope.launch { drawerState.open() } },
                                         onToggleHideAmounts = onToggleHideAmounts,
                                         onChooseBalanceAccounts = onChooseBalanceAccounts,
@@ -892,12 +1101,15 @@ private fun MainNavigation(
                                         },
                                         onDeleteTransaction = onDelete,
                                         onPreviousMonth = { ledgerViewModel.shiftMonth(-1) },
-                                        onNextMonth = { ledgerViewModel.shiftMonth(1) }
+                                        onNextMonth = { ledgerViewModel.shiftMonth(1) },
+                                        onGoToToday = { ledgerViewModel.goToCurrentMonth() },
+                                        swipeToDeleteEnabled = settingsFlow?.swipeToDeleteEnabled == true
                                     )
                                     2 -> InsightsScreen(
                                         state = state,
                                         onPreviousMonth = { ledgerViewModel.shiftMonth(-1) },
-                                        onNextMonth = { ledgerViewModel.shiftMonth(1) }
+                                        onNextMonth = { ledgerViewModel.shiftMonth(1) },
+                                        onGoToToday = { ledgerViewModel.goToCurrentMonth() },
                                     )
                                     3 -> SettingsScreen(
                                         state = state,
@@ -933,6 +1145,9 @@ private fun MainNavigation(
                                         updateChecking = updateChecking,
                                         updateCheckMessage = updateCheckMessage,
                                         onToggleUpdateChecks = settingsViewModel::setUpdateChecksEnabled,
+                                        onToggleSwipeToDelete = { enabled ->
+                                            settingsViewModel.setSwipeToDeleteEnabled(enabled)
+                                        },
                                         onCheckForUpdates = settingsViewModel::checkForUpdatesNow,
                                         onDismissUpdateCheckMessage = settingsViewModel::clearUpdateCheckMessage
                                     )
@@ -949,14 +1164,17 @@ private fun MainNavigation(
                             },
                             onDeleteTransaction = onDelete,
                             onPreviousMonth = { ledgerViewModel.shiftMonth(-1) },
-                            onNextMonth = { ledgerViewModel.shiftMonth(1) }
+                            onNextMonth = { ledgerViewModel.shiftMonth(1) },
+                            onGoToToday = { ledgerViewModel.goToCurrentMonth() },
+                            swipeToDeleteEnabled = settingsFlow?.swipeToDeleteEnabled == true
                         )
                     }
                     composable(Routes.Insights) {
                         InsightsScreen(
                             state = state,
                             onPreviousMonth = { ledgerViewModel.shiftMonth(-1) },
-                            onNextMonth = { ledgerViewModel.shiftMonth(1) }
+                            onNextMonth = { ledgerViewModel.shiftMonth(1) },
+                            onGoToToday = { ledgerViewModel.goToCurrentMonth() },
                         )
                     }
                     composable(Routes.Settings) {
@@ -986,6 +1204,7 @@ private fun MainNavigation(
                             },
                             onBackupCreated = { settingsViewModel.markBackupNow() },
                             localBackups = localBackups,
+                            previewBackup = previewRestore,
                             onRestoreLocalBackup = restoreFromLocal,
                             onBackupNow = backupNow,
                             smsScanning = settingsViewModel.smsScanning.collectAsStateWithLifecycle().value,
@@ -994,6 +1213,9 @@ private fun MainNavigation(
                             updateChecking = updateChecking,
                             updateCheckMessage = updateCheckMessage,
                             onToggleUpdateChecks = settingsViewModel::setUpdateChecksEnabled,
+                            onToggleSwipeToDelete = { enabled ->
+                                settingsViewModel.setSwipeToDeleteEnabled(enabled)
+                            },
                             onCheckForUpdates = settingsViewModel::checkForUpdatesNow,
                             onDismissUpdateCheckMessage = settingsViewModel::clearUpdateCheckMessage
                         )
@@ -1038,6 +1260,7 @@ private fun MainNavigation(
                             onDeleteBudget = { ledgerViewModel.deleteBudget(it) },
                             onPreviousMonth = { ledgerViewModel.shiftMonth(-1) },
                             onNextMonth = { ledgerViewModel.shiftMonth(1) },
+                            onGoToToday = { ledgerViewModel.goToCurrentMonth() },
                             onBack = { navController.navigateUp() }
                         )
                     }
@@ -1053,6 +1276,7 @@ private fun MainNavigation(
                         AccountsScreen(
                             state = state,
                             onSaveAccount = { ledgerViewModel.saveAccount(it) },
+                            onSetBalance = { id, amount -> ledgerViewModel.setAccountBalance(id, amount) },
                             onDeleteAccount = { account, result ->
                                 ledgerViewModel.deleteAccount(account, result)
                             },
@@ -1073,10 +1297,17 @@ private fun MainNavigation(
                             state = state,
                             onBack = { navController.navigateUp() },
                             onRestore = { ledgerViewModel.restoreFromTrash(it) },
-                            onDeleteForever = { ledgerViewModel.deleteForever(it) },
-                            onEmptyTrash = { ledgerViewModel.emptyTrash() }
+                            onDeleteForever = onFullyDelete,
+                            onEmptyTrash = onEmptyTrash
                         )
                     }
+                }
+
+                if (showSpendingCalendar) {
+                    SpendingCalendarSheet(
+                        state = state,
+                        onDismiss = { showSpendingCalendar = false }
+                    )
                 }
 
                 if (currentRoute == Routes.Home) {
@@ -1110,6 +1341,11 @@ private fun MainNavigation(
         }
     }
 }
+
+private data class PendingDrawerRestore(
+    val file: BackupCoordinator.BackupFile,
+    val preview: BackupPreview
+)
 
 @Composable
 private fun DrawerGroupDivider() {

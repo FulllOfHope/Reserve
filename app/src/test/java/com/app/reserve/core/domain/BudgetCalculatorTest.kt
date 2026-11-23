@@ -105,6 +105,49 @@ class BudgetCalculatorTest {
     }
 
     @Test
+    fun `budget pace compares spend with an even day-by-day pace`() {
+        val budget = BudgetEntity("b", null, 100_000, month)
+        val pace = BudgetCalculator.pace(budget, transactions, LocalDate.of(2026, 11, 15))
+        // 30-day November, day 15: half the budget should have been spent.
+        assertEquals(15, pace.elapsedDays)
+        assertEquals(30, pace.daysInMonth)
+        assertEquals(50_000L, pace.expectedSpent)
+        assertEquals(50_000L, pace.delta)
+        assertTrue(pace.isAhead)
+    }
+
+    @Test
+    fun `budget pace reports under pace and never claims today for other months`() {
+        val food = BudgetEntity("f", "food", 200_000, month)
+        val under = BudgetCalculator.pace(food, transactions, LocalDate.of(2026, 11, 15))
+        assertEquals(-30_000L, under.delta)
+        assertFalse(under.isAhead)
+
+        val old = BudgetEntity("o", null, 100_000, "2026-10")
+        val finished = BudgetCalculator.pace(old, transactions, LocalDate.of(2026, 11, 15))
+        assertEquals(31, finished.elapsedDays)
+        assertEquals(100_000L, finished.expectedSpent)
+    }
+
+    @Test
+    fun `grouped breakdown folds the tail into a single Other slice`() {
+        val manyCategories = (1..9).map { index ->
+            CategoryEntity("c$index", "Category $index", "#5C947F", "other", TransactionType.EXPENSE)
+        }
+        val manyTransactions = (1..9).map { index ->
+            transaction("x$index", (index * 1_000).toLong(), TransactionType.EXPENSE, "c$index")
+        }
+        val grouped = BudgetCalculator.groupedBreakdown(
+            manyTransactions, month, manyCategories, maxSlices = 4
+        )
+        assertEquals(4, grouped.size)
+        assertEquals(listOf("c9", "c8", "c7"), grouped.take(3).map { it.categoryId })
+        assertTrue(grouped.last().isOther)
+        // Categories 6..1: 6,000 + 5,000 + 4,000 + 3,000 + 2,000 + 1,000.
+        assertEquals(21_000L, grouped.last().spent)
+    }
+
+    @Test
     fun `monthly series returns the requested window ending on the month`() {
         val series = BudgetCalculator.monthlySeries(transactions, month, 3)
         assertEquals(listOf("2026-09", "2026-10", "2026-11"), series.map { it.monthYear })

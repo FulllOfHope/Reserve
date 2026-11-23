@@ -3,6 +3,7 @@ package com.app.reserve.feature.insights
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -36,6 +37,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
@@ -60,6 +64,7 @@ import com.app.reserve.core.designsystem.SectionLabel
 import com.app.reserve.core.designsystem.SheetHandle
 import com.app.reserve.core.designsystem.TransactionRow
 import com.app.reserve.core.designsystem.categoryColor
+import com.app.reserve.core.designsystem.formatMoney
 import com.app.reserve.core.designsystem.tabular
 import com.app.reserve.core.domain.BudgetCalculator
 import com.app.reserve.core.domain.CategorySpend
@@ -67,16 +72,20 @@ import com.app.reserve.core.domain.Money
 import androidx.compose.ui.text.drawText
 import com.app.reserve.feature.ledger.LedgerState
 
+private fun CategorySpend.displayLabel(): String =
+    if (isOther) "Other" else category?.name ?: "No category"
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun InsightsScreen(
     state: LedgerState,
     onPreviousMonth: () -> Unit,
-    onNextMonth: () -> Unit
+    onNextMonth: () -> Unit,
+    onGoToToday: () -> Unit = {}
 ) {
     val colors = LocalReserveColors.current
     val amountsHidden = LocalAmountsHidden.current
-    val breakdown = BudgetCalculator.breakdown(
+    val breakdown = BudgetCalculator.groupedBreakdown(
         state.visibleTransactions,
         state.monthYear,
         state.categories
@@ -87,7 +96,8 @@ fun InsightsScreen(
         MonthSwitcher(
             monthYear = state.monthYear,
             onPrevious = onPreviousMonth,
-            onNext = onNextMonth
+            onNext = onNextMonth,
+            onToday = onGoToToday
         )
 
         if (breakdown.isEmpty()) {
@@ -112,10 +122,18 @@ fun InsightsScreen(
                         Box(contentAlignment = Alignment.Center) {
                             DonutChart(
                                 entries = breakdown.map {
-                                    categoryColor(it.category?.colorHex ?: "#64748B") to it.spent
+                                    categoryColor(
+                                        if (it.isOther) "#64748B" else it.category?.colorHex ?: "#64748B"
+                                    ) to it.spent
                                 },
                                 total = state.spent,
-                                modifier = Modifier.size(180.dp)
+                                modifier = Modifier
+                                    .size(180.dp)
+                                    .semantics {
+                                        contentDescription = "Spending by category: " + breakdown.joinToString { entry ->
+                                            "${entry.displayLabel()}, ${formatMoney(entry.spent, amountsHidden)}"
+                                        }
+                                    }
                             )
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 Text(
@@ -173,7 +191,16 @@ fun InsightsScreen(
                             state.monthYear,
                             6
                         )
-                        TrendChart(series = series, amountsHidden = amountsHidden)
+                        TrendChart(
+                            series = series,
+                            amountsHidden = amountsHidden,
+                            modifier = Modifier.semantics {
+                                contentDescription = "Spending over the last six months: " +
+                                    series.joinToString { month ->
+                                        "${month.label} ${formatMoney(month.spent, amountsHidden)}"
+                                    }
+                            }
+                        )
                         Spacer(modifier = Modifier.height(8.dp))
                         Row(modifier = Modifier.fillMaxWidth()) {
                             series.forEach { month ->
@@ -188,7 +215,7 @@ fun InsightsScreen(
                         }
                         Spacer(modifier = Modifier.height(12.dp))
                         Text(
-                            text = "Expenses only. Transfers move money between your own accounts and are never counted.",
+                            text = "Expenses only — transfers are never counted. Bars use a compressed scale so quieter months stay visible next to a busy one, so compare the amounts rather than the bar heights.",
                             style = MaterialTheme.typography.bodySmall,
                             color = colors.textLighter
                         )
@@ -199,8 +226,16 @@ fun InsightsScreen(
     }
 
     selectedCategory?.let { entry ->
+        val headIds = breakdown.filterNot { it.isOther }.mapNotNull { it.categoryId }.toSet()
         val expenses = state.monthTransactions
-            .filter { it.type == TransactionType.EXPENSE && it.categoryId == entry.categoryId }
+            .filter { transaction ->
+                transaction.type == TransactionType.EXPENSE &&
+                    if (entry.isOther) {
+                        transaction.categoryId !in headIds
+                    } else {
+                        transaction.categoryId == entry.categoryId
+                    }
+            }
             .sortedByDescending { it.timestamp }
         CategoryExpensesSheet(
             entry = entry,
@@ -220,7 +255,7 @@ private fun CategoryExpensesSheet(
     onDismiss: () -> Unit
 ) {
     val colors = LocalReserveColors.current
-    val title = entry.category?.name ?: "No category"
+    val title = entry.displayLabel()
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         containerColor = colors.surface,
@@ -311,14 +346,20 @@ private fun CategoryLegendRow(
     onClick: () -> Unit
 ) {
     val colors = LocalReserveColors.current
-    val accent = categoryColor(entry.category?.colorHex ?: "#64748B")
+    val amountsHidden = LocalAmountsHidden.current
+    val accent = categoryColor(if (entry.isOther) "#64748B" else entry.category?.colorHex ?: "#64748B")
     val share = if (total <= 0L) 0 else (entry.spent * 100L / total).toInt()
+    val label = entry.displayLabel()
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .heightIn(min = 48.dp)
             .padding(horizontal = 16.dp, vertical = 6.dp)
             .clip(RoundedCornerShape(12.dp))
-            .clickable(onClick = onClick)
+            .clickable(onClick = onClick, onClickLabel = "View $label expenses", role = Role.Button)
+            .semantics {
+                contentDescription = "$label, $share percent of spending, ${formatMoney(entry.spent, amountsHidden)}"
+            }
             .padding(horizontal = 8.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -329,7 +370,7 @@ private fun CategoryLegendRow(
         )
         Spacer(modifier = Modifier.width(12.dp))
         Text(
-            text = entry.category?.name ?: "No category",
+            text = label,
             style = MaterialTheme.typography.bodyMedium,
             color = colors.textBase,
             modifier = Modifier.weight(1f)
@@ -475,21 +516,19 @@ private fun TrendChart(
 
 /** 1.1L, 2.1k, 450 — compact enough that adjacent labels never collide. */
 private fun compactAmount(minor: Long): String {
-    // Ledger amounts are paise; chart labels are rupees.
-    val rupees = minor / 100.0
-    fun short(divisor: Double, suffix: String): String {
-        val rounded = kotlin.math.round(rupees / divisor * 10.0) / 10.0
-        val whole = rounded.toLong()
-        return if (rounded == whole.toDouble()) "$whole$suffix" else "$rounded$suffix"
+    // Ledger amounts are paise; chart labels are rupees. Keep the rounding in
+    // Long minor units so a large spike can never lose precision to a Double.
+    val rupees = minor / 100L
+    fun short(divisor: Long, suffix: String): String {
+        val tenths = (rupees * 10L + divisor / 2L) / divisor
+        val whole = tenths / 10L
+        val fraction = tenths % 10L
+        return if (fraction == 0L) "$whole$suffix" else "$whole.$fraction$suffix"
     }
     return when {
-        rupees >= 10_000_000.0 -> short(10_000_000.0, "C")
-        rupees >= 100_000.0 -> short(100_000.0, "L")
-        rupees >= 1_000.0 -> short(1_000.0, "k")
-        else -> {
-            val rounded = kotlin.math.round(rupees * 10.0) / 10.0
-            val whole = rounded.toLong()
-            if (rounded == whole.toDouble()) whole.toString() else rounded.toString()
-        }
+        rupees >= 10_000_000L -> short(10_000_000L, "C")
+        rupees >= 100_000L -> short(100_000L, "L")
+        rupees >= 1_000L -> short(1_000L, "k")
+        else -> "$rupees"
     }
 }

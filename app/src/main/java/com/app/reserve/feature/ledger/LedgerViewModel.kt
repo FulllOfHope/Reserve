@@ -13,6 +13,7 @@ import com.app.reserve.core.domain.BackupManager
 import com.app.reserve.core.domain.BudgetCalculator
 import com.app.reserve.core.domain.CsvManager
 import com.app.reserve.core.domain.Dates
+import com.app.reserve.core.domain.LedgerReconciliation.PendingBalanceDiscrepancy
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -120,6 +121,14 @@ class LedgerViewModel(
         LedgerState()
     )
 
+    /** Persisted queue from background SMS checks; survives process death. */
+    val pendingBalanceDiscrepancies: StateFlow<List<PendingBalanceDiscrepancy>> =
+        repository.pendingBalanceDiscrepancies.stateIn(
+            viewModelScope,
+            SharingStarted.WhileSubscribed(5_000),
+            emptyList()
+        )
+
     fun setMonth(monthYear: String) {
         selectedMonth.value = monthYear
     }
@@ -198,6 +207,24 @@ class LedgerViewModel(
 
     fun restoreAccount(account: AccountEntity) {
         viewModelScope.launch { repository.restoreAccount(account) }
+    }
+
+    /** Manual correction: adjusts opening balance, never inserts a fake row. */
+    fun setAccountBalance(accountId: String, balanceMinor: Long) {
+        viewModelScope.launch { repository.setAccountBalance(accountId, balanceMinor) }
+    }
+
+    fun resolveBalanceDiscrepancy(
+        discrepancy: PendingBalanceDiscrepancy,
+        addDifferenceTransaction: Boolean
+    ) {
+        viewModelScope.launch {
+            repository.resolveBalanceDiscrepancy(discrepancy, addDifferenceTransaction)
+        }
+    }
+
+    fun dismissBalanceDiscrepancy(accountId: String) {
+        viewModelScope.launch { repository.dismissBalanceDiscrepancy(accountId) }
     }
 
     /** Null = all active accounts; an explicit (possibly empty) set is respected. */

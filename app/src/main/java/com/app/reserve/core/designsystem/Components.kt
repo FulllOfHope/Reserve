@@ -21,13 +21,16 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.ime
 import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.TextButton
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -50,6 +53,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -180,8 +187,10 @@ fun SectionLabel(
                 color = colors.primaryDefault,
                 modifier = Modifier
                     .clip(RoundedCornerShape(radius_sm))
-                    .clickable(onClick = onAction)
+                    .heightIn(min = 48.dp)
+                    .clickable(onClick = onAction, onClickLabel = actionLabel, role = Role.Button)
                     .padding(horizontal = spacing_sm, vertical = spacing_xs)
+                    .wrapContentHeight(Alignment.CenterVertically)
             )
         }
     }
@@ -337,7 +346,9 @@ fun MonthSwitcher(
     monthYear: String,
     onPrevious: () -> Unit,
     onNext: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    isCurrentMonth: Boolean = Dates.isCurrentMonth(monthYear),
+    onToday: (() -> Unit)? = null
 ) {
     val colors = LocalReserveColors.current
     Row(
@@ -350,12 +361,28 @@ fun MonthSwitcher(
         IconButton(onClick = onPrevious) {
             Icon(Icons.Rounded.ChevronLeft, contentDescription = "Previous month", tint = colors.textLight)
         }
-        Text(
-            text = Dates.monthLabel(monthYear),
-            style = MaterialTheme.typography.titleMedium,
-            color = colors.textBase,
-            modifier = Modifier.padding(horizontal = spacing_sm)
-        )
+        if (!isCurrentMonth && onToday != null) {
+            TextButton(
+                onClick = onToday,
+                modifier = Modifier
+                    .heightIn(min = 48.dp)
+                    .padding(horizontal = spacing_xs),
+                colors = ButtonDefaults.textButtonColors(contentColor = colors.primaryDefault)
+            ) {
+                Text(
+                    text = "${Dates.monthLabel(monthYear)} · Today",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = colors.primaryDefault
+                )
+            }
+        } else {
+            Text(
+                text = Dates.monthLabel(monthYear),
+                style = MaterialTheme.typography.titleMedium,
+                color = colors.textBase,
+                modifier = Modifier.padding(horizontal = spacing_sm)
+            )
+        }
         IconButton(onClick = onNext) {
             Icon(Icons.Rounded.ChevronRight, contentDescription = "Next month", tint = colors.textLight)
         }
@@ -437,8 +464,10 @@ fun EmptyState(
                     color = colors.primaryDefault,
                     modifier = Modifier
                         .clip(RoundedCornerShape(radius_sm))
-                        .clickable(onClick = onAction)
+                        .heightIn(min = 48.dp)
+                        .clickable(onClick = onAction, onClickLabel = actionLabel, role = Role.Button)
                         .padding(horizontal = spacing_md, vertical = spacing_sm)
+                        .wrapContentHeight(Alignment.CenterVertically)
                 )
             }
         }

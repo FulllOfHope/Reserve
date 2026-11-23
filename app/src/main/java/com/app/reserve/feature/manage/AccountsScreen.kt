@@ -49,6 +49,7 @@ import com.app.reserve.core.designsystem.ReserveCard
 import com.app.reserve.core.designsystem.ReserveDivider
 import com.app.reserve.core.designsystem.ScreenTitle
 import com.app.reserve.core.designsystem.SectionLabel
+import com.app.reserve.core.designsystem.spacing_sm
 import com.app.reserve.core.designsystem.tabular
 import com.app.reserve.core.domain.Money
 import com.app.reserve.feature.ledger.LedgerState
@@ -58,6 +59,7 @@ import java.util.UUID
 fun AccountsScreen(
     state: LedgerState,
     onSaveAccount: (AccountEntity) -> Unit,
+    onSetBalance: (String, Long) -> Unit,
     onDeleteAccount: (AccountEntity, (Boolean) -> Unit) -> Unit,
     onRestoreAccount: (AccountEntity) -> Unit,
     onBack: () -> Unit
@@ -147,6 +149,7 @@ fun AccountsScreen(
     if (adding) {
         AccountEditorDialog(
             existing = null,
+            onSetBalance = onSetBalance,
             onDismiss = { adding = false },
             onSave = { account ->
                 onSaveAccount(account)
@@ -158,6 +161,7 @@ fun AccountsScreen(
     editing?.let { account ->
         AccountEditorDialog(
             existing = account,
+            onSetBalance = onSetBalance,
             onDismiss = { editing = null },
             onSave = { updated ->
                 onSaveAccount(updated)
@@ -263,14 +267,19 @@ private fun AccountRow(
 @Composable
 private fun AccountEditorDialog(
     existing: AccountEntity?,
+    onSetBalance: (String, Long) -> Unit,
     onDismiss: () -> Unit,
     onSave: (AccountEntity) -> Unit
 ) {
     val colors = LocalReserveColors.current
     var name by remember { mutableStateOf(existing?.name ?: "") }
     var openingText by remember { mutableStateOf("") }
+    var balanceText by remember {
+        mutableStateOf(existing?.let { Money.format(it.balance) }.orEmpty())
+    }
 
     val openingValid = existing != null || openingText.isBlank() || Money.parse(openingText) != null
+    val parsedBalance = Money.parse(balanceText)
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -314,6 +323,45 @@ private fun AccountEditorDialog(
                         style = MaterialTheme.typography.bodySmall,
                         color = colors.textLighter
                     )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text(
+                        text = "Correct current balance",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = colors.textLight
+                    )
+                    Spacer(modifier = Modifier.height(spacing_sm))
+                    OutlinedTextField(
+                        value = balanceText,
+                        onValueChange = { balanceText = it },
+                        label = { Text("Balance") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        isError = parsedBalance == null,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = fieldColors()
+                    )
+                    Text(
+                        text = "Adjusts the opening balance, so past transactions stay intact.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = colors.textLighter
+                    )
+                    TextButton(
+                        onClick = {
+                            parsedBalance?.let { onSetBalance(existing.id, it) }
+                            onDismiss()
+                        },
+                        enabled = parsedBalance != null && parsedBalance != existing.balance
+                    ) {
+                        Text(
+                            text = "Set balance",
+                            color = if (parsedBalance != null && parsedBalance != existing.balance) {
+                                colors.primaryDefault
+                            } else {
+                                colors.textLighter
+                            }
+                        )
+                    }
                 }
             }
         },

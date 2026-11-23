@@ -69,6 +69,18 @@ fun RecurringScreen(
     val colors = LocalReserveColors.current
     var adding by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<RecurringEntity?>(null) }
+    var pendingDelete by remember { mutableStateOf<Pair<String, String>?>(null) }
+
+    fun requestDelete(id: String, name: String) {
+        pendingDelete = id to name
+        editing = null
+        adding = false
+    }
+
+    fun recurringLabel(rule: RecurringEntity): String = rule.note.ifBlank {
+        rule.categoryId?.let { state.categoryFor(it)?.name }
+            ?: if (rule.type == TransactionType.TRANSFER) "Transfer" else "Recurring rule"
+    }
 
     Column(modifier = Modifier.fillMaxSize()) {
         ScreenTitle(
@@ -132,7 +144,7 @@ fun RecurringScreen(
                         onTogglePaused = {
                             onSaveRecurring(rule.copy(paused = !rule.paused))
                         },
-                        onDelete = { onDeleteRecurring(rule.id) }
+                        onDelete = { requestDelete(rule.id, recurringLabel(rule)) }
                     )
                     ReserveDivider()
                 }
@@ -154,8 +166,33 @@ fun RecurringScreen(
                 editing = null
             },
             onDelete = {
-                editing?.let { onDeleteRecurring(it.id) }
-                editing = null
+                editing?.let { requestDelete(it.id, recurringLabel(it)) }
+            }
+        )
+    }
+
+    pendingDelete?.let { (id, name) ->
+        AlertDialog(
+            onDismissRequest = { pendingDelete = null },
+            containerColor = colors.fillLight,
+            titleContentColor = colors.textBase,
+            textContentColor = colors.textLight,
+            title = { Text("Delete $name?") },
+            text = {
+                Text("This rule will stop generating entries. Transactions it already created stay in the ledger.")
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    onDeleteRecurring(id)
+                    pendingDelete = null
+                }) {
+                    Text("Delete", color = colors.warningDefault)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDelete = null }) {
+                    Text("Keep", color = colors.textLight)
+                }
             }
         )
     }
@@ -472,7 +509,7 @@ private fun ChoiceWrap(
                         onClick = { onSelect(id) },
                         modifier = Modifier
                             .weight(1f)
-                            .height(40.dp),
+                            .heightIn(min = 48.dp),
                         shape = RoundedCornerShape(10.dp),
                         color = if (selected) colors.primaryDefault.copy(alpha = 0.12f) else colors.fillLight,
                         border = BorderStroke(1.dp, if (selected) colors.primaryDefault else colors.strokeFaint)

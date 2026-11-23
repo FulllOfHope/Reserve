@@ -35,6 +35,13 @@ import androidx.compose.ui.unit.dp
 import kotlin.math.abs
 import com.app.reserve.core.designsystem.LocalReserveColors
 
+object BottomBarMetrics {
+    val height = 68.dp
+    val verticalPadding = 14.dp
+    /** Space the floating capsule occupies above the navigation inset. */
+    val clearance = height + verticalPadding * 2
+}
+
 enum class BottomDestination(
     val route: String,
     val label: String,
@@ -86,8 +93,8 @@ fun ReserveBottomBar(
                 }
             }
             .navigationBarsPadding()
-            .padding(horizontal = 16.dp, vertical = 14.dp)
-            .height(68.dp),
+            .padding(horizontal = 16.dp, vertical = BottomBarMetrics.verticalPadding)
+            .height(BottomBarMetrics.height),
         shape = RoundedCornerShape(26.dp),
         color = colors.surface,
         border = androidx.compose.foundation.BorderStroke(1.dp, colors.strokeFaint),
@@ -106,7 +113,7 @@ fun ReserveBottomBar(
                 Box(
                     modifier = Modifier
                         .width(48.dp)
-                        .height(44.dp)
+                        .height(48.dp)
                         .clip(RoundedCornerShape(14.dp))
                         .background(if (selected) colors.fillLight else Color.Transparent)
                         .clickable { onSelectIndex(index) },

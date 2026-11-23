@@ -176,7 +176,13 @@ class ReserveWidget : GlanceAppWidget() {
                         }
                     RecentRow(
                         title = title,
-                        amount = transaction.amount,
+                        // Match the app's TransactionRow: expenses carry a minus sign,
+                        // income a plus sign, so the widget reads consistently.
+                        amount = if (transaction.type == TransactionType.EXPENSE) {
+                            -transaction.amount
+                        } else {
+                            transaction.amount
+                        },
                         income = transaction.type == TransactionType.INCOME,
                         categoryColor = category?.let { categoryColor(it.colorHex) }
                             ?: palette.primary
@@ -369,6 +375,7 @@ private fun StatsCard(palette: WidgetPalette, figures: WidgetFigures, hidden: Bo
             StatColumn(
                 label = "SPENT",
                 value = figures.spent,
+                showPlus = false,
                 hidden = hidden,
                 color = palette.textBase,
                 palette = palette,
@@ -383,6 +390,7 @@ private fun StatsCard(palette: WidgetPalette, figures: WidgetFigures, hidden: Bo
             StatColumn(
                 label = "INCOME",
                 value = figures.income,
+                showPlus = true,
                 hidden = hidden,
                 color = palette.primary,
                 palette = palette,
@@ -396,6 +404,7 @@ private fun StatsCard(palette: WidgetPalette, figures: WidgetFigures, hidden: Bo
 private fun StatColumn(
     label: String,
     value: Long,
+    showPlus: Boolean,
     hidden: Boolean,
     color: Color,
     palette: WidgetPalette,
@@ -413,7 +422,7 @@ private fun StatColumn(
         )
         Spacer(modifier = GlanceModifier.height(2.dp))
         Text(
-            text = if (hidden) HiddenAmount else Money.format(value, showPlus = label == "INCOME"),
+            text = if (hidden) HiddenAmount else Money.format(value, showPlus = showPlus),
             maxLines = 1,
             style = TextStyle(
                 color = ColorProvider(color),

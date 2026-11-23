@@ -4,10 +4,12 @@ import android.Manifest
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
+import android.view.WindowManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -29,7 +31,26 @@ class MainActivity : FragmentActivity() {
         openUpdateSheet = intent.getBooleanExtra(EXTRA_OPEN_UPDATE_SHEET, false)
         openInstallUpdate = intent.getBooleanExtra(EXTRA_OPEN_INSTALL_UPDATE, false)
         setContent {
-            val repository = (application as ReserveApplication).container.updateRepository
+            val container = (application as ReserveApplication).container
+            val repository = container.updateRepository
+            val reserveSettings by container.settings.settings
+                .collectAsStateWithLifecycle(initialValue = null)
+            val appLockEnabled = reserveSettings?.biometricLock == true
+
+            // Block screenshots and the recent-apps preview whenever App Lock is
+            // enabled, including the brief unlocked window after authentication.
+            DisposableEffect(appLockEnabled) {
+                if (appLockEnabled) {
+                    window.setFlags(
+                        WindowManager.LayoutParams.FLAG_SECURE,
+                        WindowManager.LayoutParams.FLAG_SECURE
+                    )
+                } else {
+                    window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+                }
+                onDispose { window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE) }
+            }
+
             val needNotificationPermission by repository.needNotificationPermission
                 .collectAsStateWithLifecycle()
             val notificationPermissionLauncher = rememberLauncherForActivityResult(

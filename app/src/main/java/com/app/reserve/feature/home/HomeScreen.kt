@@ -11,8 +11,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -21,10 +24,14 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Surface
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.CalendarMonth
+import androidx.compose.material.icons.rounded.ChevronLeft
+import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.ReceiptLong
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material.icons.rounded.Visibility
 import androidx.compose.material.icons.rounded.VisibilityOff
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -37,6 +44,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -46,11 +54,13 @@ import com.app.reserve.core.designsystem.BudgetBar
 import com.app.reserve.core.designsystem.CategoryChip
 import com.app.reserve.core.designsystem.EmptyState
 import com.app.reserve.core.designsystem.EnteSpacing
+import com.app.reserve.core.designsystem.HiddenAmount
 import com.app.reserve.core.designsystem.LocalAmountsHidden
 import com.app.reserve.core.designsystem.LocalReserveColors
 import com.app.reserve.core.designsystem.MoneyText
 import com.app.reserve.core.designsystem.MonthSwitcher
 import com.app.reserve.core.designsystem.ReserveCard
+import com.app.reserve.core.designsystem.ReserveDivider
 import com.app.reserve.core.designsystem.SectionLabel
 import com.app.reserve.core.designsystem.SheetHandle
 import com.app.reserve.core.designsystem.TransactionActionSheet
@@ -60,9 +70,14 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import com.app.reserve.core.designsystem.radius_md
+import com.app.reserve.core.designsystem.spacing_md
+import com.app.reserve.core.designsystem.spacing_sm
+import com.app.reserve.core.designsystem.spacing_xxl
 import com.app.reserve.core.designsystem.tabular
 import com.app.reserve.core.domain.BudgetCalculator
 import com.app.reserve.core.domain.Dates
+import com.app.reserve.core.domain.MonthForecast
 import com.app.reserve.feature.ledger.LedgerState
 
 @Composable
@@ -74,8 +89,9 @@ fun HomeScreen(
     onSeeAll: () -> Unit,
     onOpenBudgets: () -> Unit,
     onPreviousMonth: () -> Unit,
-    onOpenMenu: () -> Unit,
     onNextMonth: () -> Unit,
+    onGoToToday: () -> Unit = {},
+    onOpenMenu: () -> Unit,
     onToggleHideAmounts: (Boolean) -> Unit = {},
     onChooseBalanceAccounts: (Set<String>?) -> Unit = {},
     onSetCategory: (TransactionEntity, String) -> Unit = { _, _ -> }
@@ -87,12 +103,21 @@ fun HomeScreen(
     var activeActionSheetTransaction by remember { mutableStateOf<TransactionEntity?>(null) }
     var categoryPickerTransaction by remember { mutableStateOf<TransactionEntity?>(null) }
     var showBalanceAccounts by remember { mutableStateOf(false) }
+    var showForecast by remember { mutableStateOf(false) }
+    val forecast = MonthForecast.compute(
+        balance = state.totalBalance,
+        monthYear = state.monthYear,
+        budgets = state.budgets,
+        transactions = state.visibleTransactions,
+        recurring = state.recurring
+    )
 
     Column(modifier = Modifier.fillMaxSize()) {
         MonthSwitcher(
             monthYear = state.monthYear,
             onPrevious = onPreviousMonth,
-            onNext = onNextMonth
+            onNext = onNextMonth,
+            onToday = onGoToToday
         )
 
         LazyColumn(
@@ -201,6 +226,51 @@ fun HomeScreen(
                                 modifier = Modifier.weight(1f)
                             )
                         }
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Surface(
+                            onClick = { showForecast = true },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 48.dp),
+                            shape = RoundedCornerShape(radius_md),
+                            color = colors.fillLight,
+                            border = BorderStroke(1.dp, colors.strokeFaint)
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = spacing_md, vertical = spacing_sm),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = "SAFE TO SPEND",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = colors.textLighter
+                                    )
+                                    MoneyText(
+                                        amount = forecast.safeToSpend,
+                                        style = MaterialTheme.typography.titleMedium.tabular(),
+                                        color = colors.primaryDefault
+                                    )
+                                }
+                                Text(
+                                    text = if (Dates.isCurrentMonth(state.monthYear)) {
+                                        "${forecast.daysLeft} days left"
+                                    } else {
+                                        "View forecast"
+                                    },
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = colors.textLighter
+                                )
+                                Icon(
+                                    imageVector = Icons.Rounded.ChevronRight,
+                                    contentDescription = null,
+                                    tint = colors.textLighter,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -262,6 +332,21 @@ fun HomeScreen(
                         }
                         Spacer(modifier = Modifier.height(8.dp))
                         BudgetBar(spent = progress.spent, limit = budget.amount)
+                        val pace = BudgetCalculator.pace(budget, state.visibleTransactions)
+                        if (pace.isCurrentMonth) {
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text(
+                                text = when {
+                                    pace.isAhead ->
+                                        "${formatMoney(pace.delta, amountsHidden)} ahead of pace"
+                                    pace.delta < 0L ->
+                                        "${formatMoney(-pace.delta, amountsHidden)} under pace"
+                                    else -> "Right on pace"
+                                },
+                                style = MaterialTheme.typography.labelSmall.tabular(),
+                                color = if (pace.isAhead) colors.warningDefault else colors.primaryDefault
+                            )
+                        }
                     }
                 }
             }
@@ -342,6 +427,110 @@ fun HomeScreen(
             },
             onDismiss = { showBalanceAccounts = false }
         )
+    }
+
+    if (showForecast) {
+        MonthForecastSheet(
+            forecast = forecast,
+            hasBudgets = forecast.hasBudgets,
+            monthYear = state.monthYear,
+            onDismiss = { showForecast = false }
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun MonthForecastSheet(
+    forecast: MonthForecast.Result,
+    hasBudgets: Boolean,
+    monthYear: String,
+    onDismiss: () -> Unit
+) {
+    val colors = LocalReserveColors.current
+    val amountsHidden = LocalAmountsHidden.current
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = colors.surface,
+        contentWindowInsets = { WindowInsets.ime },
+        shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
+        tonalElevation = 0.dp
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = spacing_xxl)
+                .navigationBarsPadding()
+        ) {
+            SheetHandle()
+            Spacer(modifier = Modifier.height(16.dp))
+            Text(
+                text = "Month forecast · ${Dates.monthLabel(monthYear)}",
+                style = MaterialTheme.typography.titleLarge,
+                color = colors.textBase
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = "A guide to what you can safely spend. It stays on this device.",
+                style = MaterialTheme.typography.bodySmall,
+                color = colors.textLight
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+            ReserveCard {
+                Column(modifier = Modifier.padding(spacing_md)) {
+                    ForecastRow("Safe to spend", forecast.safeToSpend, colors.primaryDefault)
+                    ReserveDivider()
+                    ForecastRow("Left in budgets", forecast.budgetRemaining, colors.textBase)
+                    ReserveDivider()
+                    ForecastRow(
+                        if (forecast.recurringCount == 1) {
+                            "Upcoming recurring rule"
+                        } else {
+                            "Upcoming recurring rules (${forecast.recurringCount})"
+                        },
+                        forecast.upcomingRecurring,
+                        colors.textBase
+                    )
+                    ReserveDivider()
+                    ForecastRow("Spend at this pace", forecast.projectedSpend, colors.textBase)
+                    ReserveDivider()
+                    ForecastRow("Projected balance", forecast.projectedBalance, colors.textBase)
+                }
+            }
+            Spacer(modifier = Modifier.height(16.dp))
+            Text(
+                text = buildString {
+                    append("Safe to spend starts with the cash you have and the budget you have left, then subtracts recurring expenses still due this month. ")
+                    if (!hasBudgets) {
+                        append("With no budgets set, leftover income is used instead. ")
+                    }
+                    append("The projection assumes your current spending pace continues. Transfers are never counted as spending.")
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = colors.textLighter
+            )
+            Spacer(modifier = Modifier.height(24.dp))
+        }
+    }
+}
+
+@Composable
+private fun ForecastRow(label: String, value: Long, color: androidx.compose.ui.graphics.Color) {
+    val colors = LocalReserveColors.current
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 48.dp)
+            .padding(vertical = spacing_sm),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyMedium,
+            color = colors.textLight,
+            modifier = Modifier.weight(1f)
+        )
+        MoneyText(amount = value, style = MaterialTheme.typography.titleMedium.tabular(), color = color)
     }
 }
 
@@ -561,5 +750,170 @@ private fun MiniStat(
             color = color,
             maxLines = 1
         )
+    }
+}
+
+/** Opens from the top bar. Month navigation here is local to the sheet. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SpendingCalendarSheet(
+    state: LedgerState,
+    onDismiss: () -> Unit
+) {
+    val colors = LocalReserveColors.current
+    val amountsHidden = LocalAmountsHidden.current
+    var sheetMonth by remember { mutableStateOf(state.monthYear) }
+
+    val daySpend = remember(state.visibleTransactions, sheetMonth) {
+        BudgetCalculator.transactionsInMonth(state.visibleTransactions, sheetMonth)
+            .filter { it.type == com.app.reserve.core.database.TransactionType.EXPENSE }
+            .groupBy { Dates.toLocalDate(it.timestamp) }
+            .mapValues { (_, rows) -> rows.sumOf { it.amount } }
+    }
+    val monthTotal = daySpend.values.sum()
+    val firstDay = Dates.monthDate(sheetMonth)
+    val leadingBlanks = firstDay.dayOfWeek.value % 7 // Sunday-first grid
+    val daysInMonth = firstDay.lengthOfMonth()
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = colors.surface,
+        contentWindowInsets = { WindowInsets.ime },
+        shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
+        tonalElevation = 0.dp
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = spacing_xxl)
+                .navigationBarsPadding()
+        ) {
+            SheetHandle()
+            Spacer(modifier = Modifier.height(12.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = { sheetMonth = Dates.shiftMonth(sheetMonth, -1) }) {
+                    Icon(
+                        Icons.Rounded.ChevronLeft,
+                        contentDescription = "Previous month",
+                        tint = colors.textBase
+                    )
+                }
+                if (!Dates.isCurrentMonth(sheetMonth)) {
+                    TextButton(
+                        onClick = { sheetMonth = Dates.currentMonthKey() },
+                        colors = ButtonDefaults.textButtonColors(contentColor = colors.primaryDefault),
+                        modifier = Modifier.heightIn(min = 48.dp)
+                    ) {
+                        Text(
+                            "${Dates.monthLabel(sheetMonth)} · Today",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = colors.primaryDefault
+                        )
+                    }
+                } else {
+                    Text(
+                        text = Dates.monthLabel(sheetMonth),
+                        style = MaterialTheme.typography.titleMedium,
+                        color = colors.textBase,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+                IconButton(onClick = { sheetMonth = Dates.shiftMonth(sheetMonth, 1) }) {
+                    Icon(
+                        Icons.Rounded.ChevronRight,
+                        contentDescription = "Next month",
+                        tint = colors.textBase
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(modifier = Modifier.fillMaxWidth()) {
+                listOf("S", "M", "T", "W", "T", "F", "S").forEach { label ->
+                    Text(
+                        text = label,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = colors.textLighter,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.height(4.dp))
+            val cells = leadingBlanks + daysInMonth
+            val rows = (cells + 6) / 7
+            for (row in 0 until rows) {
+                Row(modifier = Modifier.fillMaxWidth()) {
+                    for (col in 0 until 7) {
+                        val day = row * 7 + col - leadingBlanks + 1
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .heightIn(min = 52.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (day in 1..daysInMonth) {
+                                val date = Dates.fromMonthAndDay(sheetMonth, day)
+                                val spend = daySpend[date] ?: 0L
+                                val isToday = date == Dates.today()
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    modifier = Modifier
+                                        .size(48.dp)
+                                        .clip(RoundedCornerShape(radius_md))
+                                        .background(
+                                            if (isToday) colors.primaryContainer else colors.fillLight
+                                        )
+                                ) {
+                                    Text(
+                                        text = "$day",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = if (isToday) colors.primaryDefault else colors.textBase
+                                    )
+                                    if (spend > 0L) {
+                                        Text(
+                                            text = if (amountsHidden) HiddenAmount else compactDaySpend(spend),
+                                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
+                                            color = colors.textLighter,
+                                            maxLines = 1
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            Spacer(modifier = Modifier.height(16.dp))
+            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = "Total spent",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = colors.textLight,
+                    modifier = Modifier.weight(1f)
+                )
+                MoneyText(
+                    amount = monthTotal,
+                    style = MaterialTheme.typography.titleMedium.tabular(),
+                    color = colors.textBase
+                )
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = "Expenses only. Transfers move money between your own accounts and are never counted.",
+                style = MaterialTheme.typography.bodySmall,
+                color = colors.textLighter
+            )
+            Spacer(modifier = Modifier.height(24.dp))
+        }
+    }
+}
+
+private fun compactDaySpend(minor: Long): String {
+    val rupees = minor / 100L
+    return when {
+        rupees >= 10_000_000L -> "${rupees / 10_000_000L}C"
+        rupees >= 100_000L -> "${rupees / 100_000L}L"
+        rupees >= 1_000L -> "${rupees / 1_000L}k"
+        else -> "$rupees"
     }
 }

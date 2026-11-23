@@ -214,4 +214,72 @@ class SmsParserTest {
         val sms = parse("AD-ICICIB", "INR 2,000.00 has been credited to your account ending 2233.")!!
         assertNull(sms.balanceAfterMinor)
     }
+
+    @Test
+    fun `rejects pre approved loan offers even though they say credited`() {
+        assertNull(
+            parse(
+                "AD-HDFCBK",
+                "Pre-approved loan of Rs. 23,00,000 credited to your account XX1234. Apply now!"
+            )
+        )
+    }
+
+    @Test
+    fun `does not read a credit card limit as a cash balance`() {
+        val sms = parse(
+            "AD-HDFCBK",
+            "Rs. 450.00 spent on Swiggy. Avl Limit Rs. 2,50,000. -HDFC Bank"
+        )!!
+        assertEquals(45_000L, sms.amountMinor)
+        assertNull(sms.balanceAfterMinor)
+    }
+
+    @Test
+    fun `rejects failed and declined transactions`() {
+        assertNull(parse("VK-HDFCBK", "Rs 500 debited from a/c XX1234 on 11-11-26. Transaction failed."))
+        assertNull(parse("VK-ICICIB", "Rs 900 payment declined. Try another method. -ICICI Bank"))
+    }
+
+    @Test
+    fun `rejects upi mandate creation notices`() {
+        assertNull(parse("AD-AXISBK", "UPI mandate created for Rs 5,000. -Axis Bank"))
+        assertNull(parse("VK-HDFCBK", "AutoPay registered for your Netflix payment. -HDFC Bank"))
+    }
+
+    @Test
+    fun `rejects reference numbers that follow a debit verb`() {
+        assertNull(parse("VK-HDFCBK", "Debited from A/c XX1234 Ref 2300000. -HDFC Bank"))
+    }
+
+    @Test
+    fun `rejects amounts above the sanity ceiling`() {
+        assertNull(parse("VK-HDFCBK", "Rs. 60,00,000 debited from a/c XX1234. -HDFC Bank"))
+    }
+
+    @Test
+    fun `sanity ceiling applies to the amount only, never to the balance`() {
+        val sms = parse(
+            "VK-HDFCBK",
+            "Rs. 1,250.00 debited from a/c XX1234. Avl Bal Rs. 60,00,000. -HDFC Bank"
+        )!!
+        assertEquals(125_000L, sms.amountMinor)
+        // ₹60 lakh is above the amount ceiling but a perfectly valid balance.
+        assertEquals(600_000_000L, sms.balanceAfterMinor)
+    }
+
+    @Test
+    fun `standalone Dr title is not a debit verb`() {
+        assertNull(parse("XX-UNKNOWN", "Dr. Smith will visit the clinic tomorrow at 5 pm."))
+    }
+
+    @Test
+    fun `account context keeps Dr as a valid debit verb`() {
+        val sms = parse(
+            "CAN-CANBNK",
+            "Dear Customer, Acct XXXX0105 Dr. INR 123.69 on 17/11/26 to ZOMATO; Bal INR 582.18.-CanaraBank"
+        )!!
+        assertEquals(TransactionType.EXPENSE, sms.type)
+        assertEquals(12_369L, sms.amountMinor)
+    }
 }

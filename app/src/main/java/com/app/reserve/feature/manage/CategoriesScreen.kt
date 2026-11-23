@@ -234,7 +234,7 @@ fun CategoryEditorDialog(
                             onClick = { type = option },
                             modifier = Modifier
                                 .weight(1f)
-                                .height(40.dp),
+                                .heightIn(min = 48.dp),
                             shape = RoundedCornerShape(10.dp),
                             color = if (selected) colors.primaryDefault.copy(alpha = 0.12f) else colors.fillLight,
                             border = BorderStroke(1.dp, if (selected) colors.primaryDefault else colors.strokeFaint)

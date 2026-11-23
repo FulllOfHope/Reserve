@@ -34,14 +34,29 @@ object SmsParser {
         RegexOption.IGNORE_CASE
     )
 
+    /**
+     * Bare amounts are a last resort. The number must sit directly after the
+     * verb (optionally with a tiny connector such as "by"), never after an
+     * account/reference phrase.
+     */
     private val bareAmountRegex = Regex(
         """\b(?:debited|credited|spent|paid|received|withdrawn|deposited|transferred)\b""" +
-            """[\s\S]{0,24}?([0-9][0-9,]*(?:\.[0-9]{1,2})?)\b""",
+            """\s*(?:by|of|rs\.?|inr|₹)?\s*([0-9][0-9,]*(?:\.[0-9]{1,2})?)\b""",
         RegexOption.IGNORE_CASE
     )
 
     private val debitRegex = Regex(
-        """\b(?:debited|debit\s+of|auto[\s-]*debit|spent|withdrawn|withdrawal\s+of|paid|payment\s+of|purchase\s+of|transaction\s+of|txn\s+of|used\s+(?:at|for|on)|sent|transferred|dr)\b""",
+        """\b(?:debited|debit\s+of|auto[\s-]*debit|spent|withdrawn|withdrawal\s+of|paid|payment\s+of|purchase\s+of|transaction\s+of|txn\s+of|used\s+(?:at|for|on)|sent|transferred)\b""",
+        RegexOption.IGNORE_CASE
+    )
+
+    /**
+     * "Dr." is a debit only next to account or currency context. A standalone
+     * "Dr." (a title, a doctor's name) must never open a phantom transaction.
+     */
+    private val drContextRegex = Regex(
+        """(?:\b(?:a/c|ac|acct|account|card)\b[\s\S]{0,24}?\bdr\b\.?|""" +
+            """\bdr\b\.?[\s\S]{0,24}?(?:₹|rs\.?|inr)\s*[0-9])""",
         RegexOption.IGNORE_CASE
     )
 
@@ -61,10 +76,46 @@ object SmsParser {
         RegexOption.IGNORE_CASE
     )
 
-    private val balanceBeforeRegex = Regex(
-        """(?:avl\.?|available|bal(?:ance)?|limit|total)\s*[^0-9]{0,14}$""",
+    /** Offers, loan funnels and credit-limit notices never move settled money. */
+    private val promotionRegex = Regex(
+        """\b(?:pre[\s-]*approved|loan\s+up\s+to|eligible\s+for|apply\s+now|instant\s+loan|""" +
+            """credit\s+limit|cashback\s+offer|win\s+up\s+to|congratulations|hurry|limited\s+period)\b""",
         RegexOption.IGNORE_CASE
     )
+
+    /** A failed or cancelled payment must never become a ledger row. */
+    private val failedTransactionRegex = Regex(
+        """\b(?:failed|declined|unsuccessful|could\s+not\s+be\s+processed|cancelled|canceled|""" +
+            """rejected|insufficient\s+funds)\b""",
+        RegexOption.IGNORE_CASE
+    )
+
+    /** Mandate/AutoPay setup grants permission; it is not a payment. */
+    private val mandateRegex = Regex(
+        """\b(?:mandate\s+(?:created|registered|approved|modified|revoked)|""" +
+            """autopay\s+(?:registered|set\s+up|created))\b""",
+        RegexOption.IGNORE_CASE
+    )
+
+    /**
+     * Only real running-balance cues count. "Limit" and "total" were removed
+     * because credit-card limits were being read as cash balances.
+     */
+    private val balanceBeforeRegex = Regex(
+        """(?:avl\.?|available|clear|closing|current|ledger)?\s*""" +
+            """(?:bal(?:ance)?)\s*[^0-9]{0,14}$""",
+        RegexOption.IGNORE_CASE
+    )
+
+    /** Digits after an account/reference label are identifiers, not amounts. */
+    private val referenceNumberRegex = Regex(
+        """\b(?:a/c|ac|acct|account|card|ref|utr|upi|imps|neft|otp|pin)\b""" +
+            """(?:\s+no\.?)?[\s:#.\-]{0,4}[xX*]{0,8}([0-9][0-9,]*)""",
+        RegexOption.IGNORE_CASE
+    )
+
+    /** ₹50,00,000. An unverified alert above this is almost certainly a limit/reference. */
+    const val MAX_SMS_AMOUNT_MINOR = 500_000_000L
 
     private val whitespaceRegex = Regex("""\s+""")
 
@@ -170,6 +221,13 @@ object SmsParser {
         val text = body.replace('\u00A0', ' ').trim()
         if (text.length < 8) return null
 
+        // Reject non-settlement notices before looking at any verb or amount.
+        // Otherwise a loan offer containing "credited" becomes a huge deposit.
+        if (promotionRegex.containsMatchIn(text) ||
+            failedTransactionRegex.containsMatchIn(text) ||
+            mandateRegex.containsMatchIn(text)
+        ) return null
+
         // Bank alerts arrive from short codes or DLT sender IDs, never from a
         // personal mobile number. This keeps one-to-one chats out of the ledger.
         if (isPersonalNumber(sender)) return null
@@ -177,7 +235,7 @@ object SmsParser {
         // OTPs are never transactions unless a settled-transaction verb is present.
         if (otpRegex.containsMatchIn(text) && !transactionVerbRegex.containsMatchIn(text)) return null
 
-        val debitMatch = debitRegex.find(text)
+        val debitMatch = debitRegex.find(text) ?: drContextRegex.find(text)
         val creditMatch = creditRegex.find(text)
         val type = when {
             debitMatch == null && creditMatch == null -> return null
@@ -218,32 +276,46 @@ object SmsParser {
      * non-balance amount, then to a bare "debited 500" style number.
      */
     private fun pickAmount(text: String): Long? {
-        val candidates = amountRegex.findAll(text).mapNotNull { match ->
+        // Account numbers, references and OTPs are identifiers. Mask them before
+        // amount extraction so "Ref 2300000" cannot become a ₹23,000 debit.
+        val masked = referenceNumberRegex.replace(text) { match ->
+            val digits = match.groupValues.getOrNull(1).orEmpty()
+            if (digits.isEmpty()) match.value
+            else match.value.replace(digits, "#".repeat(digits.length))
+        }
+
+        val candidates = amountRegex.findAll(masked).mapNotNull { match ->
             val start = match.range.first
-            val before = text.substring(maxOf(0, start - 28), start)
-            val beforeWindow = text.substring(maxOf(0, start - 48), start)
-            val afterWindow = text.substring(
-                minOf(text.length, match.range.last + 1),
-                minOf(text.length, match.range.last + 25)
+            val before = masked.substring(maxOf(0, start - 28), start)
+            val beforeWindow = masked.substring(maxOf(0, start - 48), start)
+            val afterWindow = masked.substring(
+                minOf(masked.length, match.range.last + 1),
+                minOf(masked.length, match.range.last + 25)
             )
             val balanceLabel = balanceBeforeRegex.containsMatchIn(before)
-            val verbBefore = debitRegex.containsMatchIn(beforeWindow) ||
-                creditRegex.containsMatchIn(beforeWindow)
-            val verbAfter = debitRegex.containsMatchIn(afterWindow) ||
-                creditRegex.containsMatchIn(afterWindow)
+            val verbBefore = hasDebitVerb(beforeWindow) || creditRegex.containsMatchIn(beforeWindow)
+            val verbAfter = hasDebitVerb(afterWindow) || creditRegex.containsMatchIn(afterWindow)
             // "Avl Bal" is a running balance, not the amount that moved.
             if (balanceLabel) return@mapNotNull null
             val value = Money.parse(match.groupValues[1]) ?: return@mapNotNull null
-            if (value <= 0L) return@mapNotNull null
+            if (value !in 1L..MAX_SMS_AMOUNT_MINOR) return@mapNotNull null
             value to (verbBefore || verbAfter)
         }.toList()
 
         candidates.firstOrNull { it.second }?.let { return it.first }
         candidates.firstOrNull()?.let { return it.first }
 
-        val bare = bareAmountRegex.find(text)?.groupValues?.getOrNull(1)
-        return bare?.let { Money.parse(it) }
+        val bareMatch = bareAmountRegex.find(masked) ?: return null
+        val raw = bareMatch.groupValues.getOrNull(1) ?: return null
+        // An ungrouped bare integer of 6+ digits is a reference, not a payment.
+        if ("." !in raw && "," !in raw && raw.length >= 6) return null
+        val bareValue = Money.parse(raw) ?: return null
+        if (bareValue !in 1L..MAX_SMS_AMOUNT_MINOR) return null
+        return bareValue
     }
+
+    private fun hasDebitVerb(text: String): Boolean =
+        debitRegex.containsMatchIn(text) || drContextRegex.containsMatchIn(text)
 
     private fun bankFor(sender: String?, body: String): String? {
         val normalized = normalizeSender(sender)

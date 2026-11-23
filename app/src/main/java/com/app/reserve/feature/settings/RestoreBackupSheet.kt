@@ -14,6 +14,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Backup
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.FileUpload
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -35,6 +36,7 @@ import com.app.reserve.core.designsystem.LocalReserveColors
 import com.app.reserve.core.designsystem.ReserveDivider
 import com.app.reserve.core.designsystem.spacing_lg
 import com.app.reserve.core.designsystem.spacing_md
+import com.app.reserve.core.domain.BackupPreview
 import com.app.reserve.core.domain.Dates
 
 /** Restore picker: newest local backup preselected, with an option to import any file. */
@@ -140,4 +142,58 @@ fun RestoreBackupSheet(
             Spacer(modifier = Modifier.height(spacing_lg))
         }
     }
+}
+
+/** Last chance to step back before a backup replaces the current ledger. */
+@Composable
+fun RestoreConfirmationDialog(
+    preview: BackupPreview,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    val colors = LocalReserveColors.current
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = colors.fillLight,
+        titleContentColor = colors.textBase,
+        textContentColor = colors.textLight,
+        title = { Text("Restore this backup?") },
+        text = {
+            Column {
+                Text(
+                    text = "Exported ${Dates.fullDateLong(preview.exportedAt)}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = colors.textBase
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "${preview.transactionCount} transactions · ${preview.accountCount} accounts",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = colors.textBase
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "${preview.sizeBytes / 1024} KB",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = colors.textLighter
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                Text(
+                    text = "This replaces your current ledger and clears pending balance checks. This cannot be undone.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = colors.warningDefault
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onConfirm) {
+                Text("Restore", color = colors.warningDefault)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel", color = colors.textLight)
+            }
+        }
+    )
 }

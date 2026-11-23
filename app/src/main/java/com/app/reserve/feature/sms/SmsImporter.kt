@@ -7,9 +7,11 @@ import android.content.pm.PackageManager
 import android.provider.Telephony
 import androidx.core.content.ContextCompat
 import com.app.reserve.core.data.ReserveRepository
+import com.app.reserve.core.data.SmsBalanceObservation
 import com.app.reserve.core.datastore.SettingsDataStore
 import com.app.reserve.core.domain.ParsedSms
 import com.app.reserve.core.domain.SmsParser
+import com.app.reserve.core.domain.SmsScanWindow
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -25,9 +27,10 @@ data class SmsScanOutcome(
 /**
  * Reads bank SMS on-device and turns them into ledger rows.
  *
- * The first scan covers the whole inbox. Later scans re-read a three-day
- * overlap so nothing is missed when the app was force-stopped, and the
- * fingerprint table makes that overlap free of duplicates.
+ * Every scan is bounded by the user-selected start month. Later scans re-read
+ * a three-day overlap so nothing is missed when the app was force-stopped, and
+ * the fingerprint table makes that overlap free of duplicates. Balance
+ * anchoring/verification runs once after all batches, never per batch.
  */
 class SmsImporter(
     context: Context,
@@ -40,24 +43,34 @@ class SmsImporter(
         if (!canReadSms()) return@withContext SmsScanOutcome(permissionDenied = true)
 
         val current = runCatching { settings.currentSettings() }.getOrNull()
-        val since = when {
-            forceFull -> 0L
-            (current?.lastSmsScanAt ?: 0L) > 0L ->
-                (current!!.lastSmsScanAt - OVERLAP_MILLIS).coerceAtLeast(0L)
-            else -> 0L
-        }
+        val since = SmsScanWindow.resolveSince(
+            now = System.currentTimeMillis(),
+            scanStartEpochMs = current?.smsScanStartEpochMs,
+            lastScanAt = current?.lastSmsScanAt ?: 0L,
+            overlapMillis = OVERLAP_MILLIS,
+            forceFull = forceFull
+        )
 
         var scanned = 0
         var imported = 0
         var duplicates = 0
         var ignored = 0
         val batch = ArrayList<ParsedSms>(BATCH_SIZE)
+        val createdAccountIds = linkedSetOf<String>()
+        val newestBalances = linkedMapOf<String, SmsBalanceObservation>()
 
         suspend fun flush() {
             if (batch.isEmpty()) return
             val result = repository.importSmsMessages(batch.toList())
             imported += result.imported
             duplicates += result.duplicates
+            createdAccountIds += result.createdAccountIds
+            result.newestBalances.forEach { (accountId, observation) ->
+                val existing = newestBalances[accountId]
+                if (existing == null || observation.messageTimestamp > existing.messageTimestamp) {
+                    newestBalances[accountId] = observation
+                }
+            }
             batch.clear()
         }
 
@@ -118,6 +131,9 @@ class SmsImporter(
             )
         }
 
+        // Anchoring/verification happens exactly once, after the final flush.
+        runCatching { repository.finishSmsImport(createdAccountIds.toSet(), newestBalances.toMap()) }
+
         if (outcome.error == null || outcome.imported > 0) {
             runCatching {
                 settings.setLastSmsScanAt(System.currentTimeMillis())
@@ -144,6 +160,9 @@ class SmsImporter(
             } ?: return@withContext false
 
             val result = repository.importSmsMessages(listOf(parsed))
+            runCatching {
+                repository.finishSmsImport(result.createdAccountIds, result.newestBalances)
+            }
             if (result.imported > 0) {
                 runCatching { settings.addSmsImported(result.imported) }
             }

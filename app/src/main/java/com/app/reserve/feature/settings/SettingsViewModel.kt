@@ -75,6 +75,10 @@ class SettingsViewModel(
         viewModelScope.launch { updateRepository?.setUpdateChecksEnabled(enabled) }
     }
 
+    fun setSwipeToDeleteEnabled(enabled: Boolean) {
+        viewModelScope.launch { settingsDataStore.setSwipeToDeleteEnabled(enabled) }
+    }
+
     /** Manual check: ignores the 6-hour gate so the button always does something. */
     fun checkForUpdatesNow() {
         val repository = updateRepository ?: return

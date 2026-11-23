@@ -10,9 +10,10 @@ import java.util.Locale
 object Dates {
     private val zone: ZoneId get() = ZoneId.systemDefault()
     private val monthKeyFormatter = DateTimeFormatter.ofPattern("yyyy-MM", Locale.US)
-    private val monthLabelFormatter = DateTimeFormatter.ofPattern("MMMM yyyy", Locale.US)
-    private val dayHeaderFormatter = DateTimeFormatter.ofPattern("d MMM", Locale.US)
-    private val fullFormatter = DateTimeFormatter.ofPattern("d MMM yyyy", Locale.US)
+    // Keys stay ASCII-stable; anything shown to the user follows device locale.
+    private val monthLabelFormatter = DateTimeFormatter.ofPattern("MMMM yyyy", Locale.getDefault())
+    private val dayHeaderFormatter = DateTimeFormatter.ofPattern("d MMM", Locale.getDefault())
+    private val fullFormatter = DateTimeFormatter.ofPattern("d MMM yyyy", Locale.getDefault())
 
     fun monthKey(date: LocalDate): String = date.format(monthKeyFormatter)
 

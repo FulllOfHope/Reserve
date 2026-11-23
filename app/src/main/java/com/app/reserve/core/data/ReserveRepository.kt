@@ -9,10 +9,12 @@ import com.app.reserve.core.database.ReserveDatabase
 import com.app.reserve.core.database.SmsImportEntity
 import com.app.reserve.core.database.TransactionEntity
 import com.app.reserve.core.database.TransactionType
+import com.app.reserve.core.datastore.SettingsDataStore
 import com.app.reserve.core.domain.Dates
 import com.app.reserve.core.domain.LedgerMath
 import com.app.reserve.core.domain.LedgerReconciliation
 import com.app.reserve.core.domain.ParsedSms
+import com.app.reserve.core.domain.LedgerReconciliation.PendingBalanceDiscrepancy
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -42,7 +44,10 @@ fun defaultCategoryName(type: TransactionType): String = when (type) {
  * All writes go through this repository so an account balance and its
  * transaction rows can never disagree. Money stays in Long minor units.
  */
-class ReserveRepository(private val database: ReserveDatabase) {
+class ReserveRepository(
+    private val database: ReserveDatabase,
+    private val settings: SettingsDataStore
+) {
 
     /** Serialises delete/restore so a fast Undo can never race the soft-delete. */
     private val trashMutex = Mutex()
@@ -60,6 +65,10 @@ class ReserveRepository(private val database: ReserveDatabase) {
     val accounts: Flow<List<AccountEntity>> = accountDao.observeAll()
     val budgets: Flow<List<BudgetEntity>> = budgetDao.observeAll()
     val recurringRules: Flow<List<RecurringEntity>> = recurringDao.observeAll()
+
+    /** Bank balances that disagree with the ledger and need user verification. */
+    val pendingBalanceDiscrepancies: Flow<List<PendingBalanceDiscrepancy>> =
+        settings.pendingBalanceDiscrepancies
 
     suspend fun ensureSeeded() {
         if (categoryDao.getAll().isEmpty()) seedCategories()
@@ -313,6 +322,63 @@ class ReserveRepository(private val database: ReserveDatabase) {
         accountDao.update(account.copy(isArchived = false))
     }
 
+    /**
+     * Sets an account's current balance by adjusting its opening balance, so
+     * `balance == openingBalanceMinor + sum(transaction deltas)` stays exact
+     * and no fake "reconciliation" row is ever inserted.
+     */
+    suspend fun setAccountBalance(accountId: String, targetBalanceMinor: Long) {
+        database.withTransaction {
+            val account = accountDao.getById(accountId) ?: return@withTransaction
+            val delta = targetBalanceMinor - account.balance
+            if (delta == 0L) return@withTransaction
+            accountDao.setOpeningBalance(
+                accountId,
+                account.openingBalanceMinor + delta
+            )
+            accountDao.setBalance(accountId, targetBalanceMinor)
+        }
+    }
+
+    suspend fun dismissBalanceDiscrepancy(accountId: String) {
+        settings.dismissBalanceDiscrepancy(accountId)
+    }
+
+    /**
+     * Resolves a verified discrepancy. When [addDifferenceTransaction] is true
+     * the delta is posted as a real income/expense row and the opening balance
+     * is untouched; otherwise only the opening balance is adjusted.
+     */
+    suspend fun resolveBalanceDiscrepancy(
+        discrepancy: PendingBalanceDiscrepancy,
+        addDifferenceTransaction: Boolean
+    ) {
+        database.withTransaction {
+            val account = accountDao.getById(discrepancy.accountId) ?: return@withTransaction
+            if (addDifferenceTransaction && discrepancy.differenceMinor != 0L) {
+                val type = if (discrepancy.differenceMinor > 0L) {
+                    TransactionType.INCOME
+                } else {
+                    TransactionType.EXPENSE
+                }
+                val correction = TransactionEntity(
+                    id = UUID.randomUUID().toString(),
+                    amount = kotlin.math.abs(discrepancy.differenceMinor),
+                    type = type,
+                    categoryId = null,
+                    accountId = account.id,
+                    timestamp = discrepancy.timestamp,
+                    note = LedgerReconciliation.BALANCE_VERIFICATION_NOTE
+                )
+                applyBalance(correction, reverse = false)
+                transactionDao.insert(correction)
+            } else {
+                setAccountBalance(account.id, discrepancy.smsBalanceMinor)
+            }
+        }
+        settings.dismissBalanceDiscrepancy(discrepancy.accountId)
+    }
+
     // ---------------------------------------------------------------------
     // Budgets
     // ---------------------------------------------------------------------
@@ -405,6 +471,9 @@ class ReserveRepository(private val database: ReserveDatabase) {
             snapshot.budgets.forEach { budgetDao.upsert(it) }
             snapshot.recurring.forEach { recurringDao.upsert(it) }
         }
+        // Device-local prompts belong to the ledger that produced them. Never
+        // carry them across a restore, including the LedgerViewModel path.
+        settings.clearBalanceDiscrepancies()
     }
 
     suspend fun importTransactions(
@@ -552,6 +621,8 @@ class ReserveRepository(private val database: ReserveDatabase) {
         var imported = 0
         var duplicates = 0
         val ordered = messages.sortedBy { it.timestamp }
+        val createdAccountIds = linkedSetOf<String>()
+        val newestBalances = linkedMapOf<String, SmsBalanceObservation>()
         database.withTransaction {
             val accountsByName = accountDao.getAll()
                 .associateByTo(mutableMapOf()) { it.name.lowercase(Locale.ROOT) }
@@ -565,6 +636,9 @@ class ReserveRepository(private val database: ReserveDatabase) {
                         // Fingerprint check first: this also covers a backfill
                         // racing the live receiver inside the same DB lock.
                         if (smsImportDao.getByFingerprint(message.fingerprint) != null) {
+                            accountsByName[accountKey]?.let { known ->
+                                recordSmsImport(message, known.id, known.id, newestBalances)
+                            }
                             return@withTransaction false
                         }
 
@@ -588,6 +662,7 @@ class ReserveRepository(private val database: ReserveDatabase) {
                             )
                             accountDao.insert(account!!)
                             accountsByName[accountKey] = account!!
+                            if (accountCreatedNow) createdAccountIds += id
                         }
 
                         // Transaction-level guard: the same movement may arrive
@@ -601,7 +676,7 @@ class ReserveRepository(private val database: ReserveDatabase) {
                             to = message.timestamp + LedgerReconciliation.DUPLICATE_WINDOW_MILLIS
                         )
                         if (duplicate != null) {
-                            recordSmsImport(message, account!!.id, duplicate.id)
+                            recordSmsImport(message, account!!.id, duplicate.id, newestBalances)
                             return@withTransaction false
                         }
 
@@ -632,20 +707,10 @@ class ReserveRepository(private val database: ReserveDatabase) {
                         applyBalance(transaction, reverse = false)
                         transactionDao.insert(transaction)
 
-                        if (message.balanceAfterMinor != null) {
-                            val newestForAccount = ordered
-                                .filter { it.accountName.equals(account!!.name, ignoreCase = true) }
-                                .maxOf { it.timestamp }
-                            val newestKnown = maxOf(
-                                newestForAccount,
-                                smsImportDao.latestMessageDate(account!!.id) ?: 0L
-                            )
-                            // Out-of-order/old SMS must never rewrite newer state.
-                            if (message.timestamp >= newestKnown) {
-                                reconcileAccountToSms(account!!.id, message)
-                            }
-                        }
-                        recordSmsImport(message, account!!.id, transactionId)
+                        // No per-message balance correction here. New accounts
+                        // are anchored and established accounts are verified
+                        // once, after every batch of the scan has been imported.
+                        recordSmsImport(message, account!!.id, transactionId, newestBalances)
                         if (accountCreatedNow) {
                             accountsByName[accountKey] = accountDao.getById(account!!.id) ?: account!!
                         }
@@ -657,10 +722,25 @@ class ReserveRepository(private val database: ReserveDatabase) {
                 }
             }
         }
-        return SmsImportResult(imported, duplicates)
+        return SmsImportResult(imported, duplicates, createdAccountIds.toSet(), newestBalances.toMap())
     }
 
-    private suspend fun recordSmsImport(message: ParsedSms, accountId: String, transactionId: String) {
+    private suspend fun recordSmsImport(
+        message: ParsedSms,
+        accountId: String,
+        transactionId: String,
+        newestBalances: MutableMap<String, SmsBalanceObservation>
+    ) {
+        message.balanceAfterMinor?.let { balance ->
+            val existing = newestBalances[accountId]
+            if (existing == null || message.timestamp > existing.messageTimestamp) {
+                newestBalances[accountId] = SmsBalanceObservation(
+                    accountId = accountId,
+                    balanceAfterMinor = balance,
+                    messageTimestamp = message.timestamp
+                )
+            }
+        }
         smsImportDao.insert(
             SmsImportEntity(
                 fingerprint = message.fingerprint,
@@ -673,21 +753,60 @@ class ReserveRepository(private val database: ReserveDatabase) {
         )
     }
 
-    /** Posts a clearly labeled adjustment so the ledger matches the bank SMS. */
-    private suspend fun reconcileAccountToSms(accountId: String, message: ParsedSms) {
-        val balance = accountDao.getById(accountId)?.balance ?: return
-        val adjustment = LedgerReconciliation.adjustmentFor(balance, message.balanceAfterMinor) ?: return
-        val reconciliation = TransactionEntity(
-            id = UUID.randomUUID().toString(),
-            amount = adjustment.amountMinor,
-            type = adjustment.type,
-            categoryId = null,
-            accountId = accountId,
-            timestamp = message.timestamp,
-            note = LedgerReconciliation.RECONCILIATION_NOTE
-        )
-        applyBalance(reconciliation, reverse = false)
-        transactionDao.insert(reconciliation)
+    /**
+     * Called once after every SMS batch has been imported. New accounts are
+     * anchored to the newest bank balance without fake transactions; existing
+     * accounts only raise a verification prompt when they actually disagree.
+     */
+    suspend fun finishSmsImport(
+        createdAccountIds: Set<String>,
+        newestBalances: Map<String, SmsBalanceObservation>
+    ) {
+        val found = mutableListOf<PendingBalanceDiscrepancy>()
+        database.withTransaction {
+            for (observation in newestBalances.values) {
+                val account = accountDao.getById(observation.accountId) ?: continue
+                val newestKnown = maxOf(
+                    observation.messageTimestamp,
+                    smsImportDao.latestMessageDate(account.id) ?: 0L
+                )
+                // An out-of-order or replayed alert must never rewrite newer state.
+                if (observation.messageTimestamp < newestKnown) continue
+
+                if (observation.accountId in createdAccountIds) {
+                    val deltas = transactionDao.getAll()
+                        .filter { it.deletedAt == null }
+                        .filter {
+                            it.accountId == account.id || it.targetAccountId == account.id
+                        }
+                        .sumOf { transaction ->
+                            LedgerMath.deltas(
+                                type = transaction.type,
+                                amount = transaction.amount,
+                                accountId = transaction.accountId,
+                                targetAccountId = transaction.targetAccountId
+                            ).filter { it.accountId == account.id }.sumOf { it.delta }
+                        }
+                    val opening = LedgerReconciliation.anchoredOpening(
+                        latestSmsBalanceMinor = observation.balanceAfterMinor,
+                        sumOfDeltas = deltas
+                    )
+                    accountDao.setOpeningBalance(account.id, opening)
+                    accountDao.setBalance(account.id, observation.balanceAfterMinor)
+                } else {
+                    LedgerReconciliation.discrepancyFor(
+                        accountId = account.id,
+                        accountName = account.name,
+                        reserveBalanceMinor = account.balance,
+                        smsBalanceMinor = observation.balanceAfterMinor,
+                        timestamp = observation.messageTimestamp
+                    )?.let { found += it }
+                }
+            }
+        }
+        // Persist the whole batch in one DataStore transaction. The queue keeps
+        // one newest prompt per account, so a multi-account scan never loses one.
+        settings.enqueueBalanceDiscrepancies(found)
     }
 
     /**
@@ -813,4 +932,18 @@ data class ImportedTransaction(
 
 data class ImportSummary(val imported: Int, val skipped: Int)
 
-data class SmsImportResult(val imported: Int, val duplicates: Int)
+/** Newest bank balance seen for an account during one bounded scan. */
+data class SmsBalanceObservation(
+    val accountId: String,
+    val balanceAfterMinor: Long,
+    val messageTimestamp: Long
+)
+
+data class SmsImportResult(
+    val imported: Int,
+    val duplicates: Int,
+    /** Accounts first created by this import; they need balance anchoring. */
+    val createdAccountIds: Set<String> = emptySet(),
+    /** Newest SMS balance per account, to be processed once after all batches. */
+    val newestBalances: Map<String, SmsBalanceObservation> = emptyMap()
+)

@@ -107,6 +107,34 @@ class LedgerReconciliationTest {
     }
 
     @Test
+    fun `full scan anchors opening against the newest bank balance`() {
+        // Three imported movements, not just the first one, define the anchor.
+        val deltas = listOf(
+            LedgerReconciliation.deltaFor(TransactionType.EXPENSE, 12_369L, "canara"),
+            LedgerReconciliation.deltaFor(TransactionType.EXPENSE, 25_000L, "canara"),
+            LedgerReconciliation.deltaFor(TransactionType.INCOME, 5_000L, "canara")
+        ).sum()
+
+        val opening = LedgerReconciliation.anchoredOpening(58_218L, deltas)
+        assertEquals(opening + deltas, 58_218L)
+    }
+
+    @Test
+    fun `small balance differences are ignored but real ones raise verification`() {
+        assertNull(
+            LedgerReconciliation.discrepancyFor(
+                "canara", "Canara Bank", 58_218L, 58_218L - 100L, 1_000L
+            )
+        )
+        val discrepancy = LedgerReconciliation.discrepancyFor(
+            "canara", "Canara Bank", 58_218L, 58_218L - 12_369L, 1_000L
+        )!!
+        assertEquals(-12_369L, discrepancy.differenceMinor)
+        assertEquals(58_218L, discrepancy.reserveBalanceMinor)
+        assertEquals(45_849L, discrepancy.smsBalanceMinor)
+    }
+
+    @Test
     fun `ledger invariant opening plus deltas equals balance`() {
         val transactions = listOf(
             Triple(TransactionType.EXPENSE, 12_369L, "canara"),

@@ -10,6 +10,7 @@ import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.app.reserve.core.domain.LedgerReconciliation.PendingBalanceDiscrepancy
 import com.app.reserve.core.util.IconSwitcher
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -27,11 +28,17 @@ data class ReserveSettings(
     val appIconAlias: String = IconSwitcher.DEFAULT_ALIAS,
     val lastBackupAt: Long = 0L,
     val lastSmsScanAt: Long = 0L,
+    /** Oldest SMS date allowed into the ledger. 0 means "use current month". */
+    val smsScanStartEpochMs: Long = 0L,
+    /** False until the user chooses between SMS setup and manual setup. */
+    val hasCompletedOnboarding: Boolean = false,
     val smsImportedTotal: Int = 0,
     /** One-time v3 ledger repair has completed successfully. */
     val ledgerRepairedV3: Boolean = false,
     /** Privacy-first GitHub Releases check for new app versions. */
     val updateChecksEnabled: Boolean = true,
+    /** Explicit opt-in; accidental swipes must never hide a transaction. */
+    val swipeToDeleteEnabled: Boolean = false,
     val lastUpdateCheckAt: Long = 0L,
     val dismissedUpdateVersion: String = "",
     /** Reminder snooze is version-specific so a newer release can still notify. */
@@ -53,9 +60,13 @@ class SettingsDataStore(private val context: Context) {
         val APP_ICON_ALIAS = stringPreferencesKey("app_icon_alias")
         val LAST_BACKUP_AT = longPreferencesKey("last_backup_at")
         val LAST_SMS_SCAN_AT = longPreferencesKey("last_sms_scan_at")
+        val SMS_SCAN_START_EPOCH_MS = longPreferencesKey("sms_scan_start_epoch_ms")
+        val HAS_COMPLETED_ONBOARDING = booleanPreferencesKey("has_completed_onboarding")
+        val PENDING_BALANCE_DISCREPANCIES = stringPreferencesKey("pending_balance_discrepancies")
         val SMS_IMPORTED_TOTAL = intPreferencesKey("sms_imported_total")
         val LEDGER_REPAIRED_V3 = booleanPreferencesKey("ledger_repaired_v3")
         val UPDATE_CHECKS_ENABLED = booleanPreferencesKey("update_checks_enabled")
+        val SWIPE_TO_DELETE_ENABLED = booleanPreferencesKey("swipe_to_delete_enabled")
         val LAST_UPDATE_CHECK_AT = longPreferencesKey("last_update_check_at")
         val DISMISSED_UPDATE_VERSION = stringPreferencesKey("dismissed_update_version")
         val SNOOZED_UPDATE_VERSION = stringPreferencesKey("snoozed_update_version")
@@ -76,9 +87,12 @@ class SettingsDataStore(private val context: Context) {
             appIconAlias = IconSwitcher.normalizeAlias(preferences[APP_ICON_ALIAS]),
             lastBackupAt = preferences[LAST_BACKUP_AT] ?: 0L,
             lastSmsScanAt = preferences[LAST_SMS_SCAN_AT] ?: 0L,
+            smsScanStartEpochMs = preferences[SMS_SCAN_START_EPOCH_MS] ?: 0L,
+            hasCompletedOnboarding = preferences[HAS_COMPLETED_ONBOARDING] ?: false,
             smsImportedTotal = preferences[SMS_IMPORTED_TOTAL] ?: 0,
             ledgerRepairedV3 = preferences[LEDGER_REPAIRED_V3] ?: false,
             updateChecksEnabled = preferences[UPDATE_CHECKS_ENABLED] ?: true,
+            swipeToDeleteEnabled = preferences[SWIPE_TO_DELETE_ENABLED] ?: false,
             lastUpdateCheckAt = preferences[LAST_UPDATE_CHECK_AT] ?: 0L,
             dismissedUpdateVersion = preferences[DISMISSED_UPDATE_VERSION] ?: "",
             snoozedUpdateVersion = preferences[SNOOZED_UPDATE_VERSION] ?: "",
@@ -87,6 +101,49 @@ class SettingsDataStore(private val context: Context) {
             pendingUpdateVersion = preferences[PENDING_UPDATE_VERSION] ?: "",
             balanceAccountIds = preferences[BALANCE_ACCOUNT_IDS]
         )
+    }
+
+    /**
+     * Persisted verification queue. A mismatch found by the background receiver
+     * survives process death and is still pending on the next app entry.
+     * Deliberately excluded from backup JSON: restoring an old backup must not
+     * bring back stale prompts.
+     */
+    val pendingBalanceDiscrepancies: Flow<List<PendingBalanceDiscrepancy>> =
+        context.reserveDataStore.data.map { preferences ->
+            preferences[PENDING_BALANCE_DISCREPANCIES].orEmpty().decodePendingDiscrepancies()
+        }
+
+    /** All accounts found in one scan are merged, one newest prompt per account. */
+    suspend fun enqueueBalanceDiscrepancies(found: List<PendingBalanceDiscrepancy>) {
+        if (found.isEmpty()) return
+        context.reserveDataStore.edit { preferences ->
+            val existing = preferences[PENDING_BALANCE_DISCREPANCIES].orEmpty()
+                .decodePendingDiscrepancies()
+            preferences[PENDING_BALANCE_DISCREPANCIES] =
+                mergePendingDiscrepancies(existing, found).encodePendingDiscrepancies()
+        }
+    }
+
+    suspend fun dismissBalanceDiscrepancy(accountId: String) {
+        context.reserveDataStore.edit { preferences ->
+            val remaining = preferences[PENDING_BALANCE_DISCREPANCIES].orEmpty()
+                .decodePendingDiscrepancies()
+                .filterNot { it.accountId == accountId }
+            if (remaining.isEmpty()) {
+                preferences.remove(PENDING_BALANCE_DISCREPANCIES)
+            } else {
+                preferences[PENDING_BALANCE_DISCREPANCIES] = remaining.encodePendingDiscrepancies()
+            }
+        }
+    }
+
+    /**
+     * A restore replaces the whole ledger, so alerts captured against the old
+     * ledger must never prompt over the newly restored one.
+     */
+    suspend fun clearBalanceDiscrepancies() {
+        context.reserveDataStore.edit { it.remove(PENDING_BALANCE_DISCREPANCIES) }
     }
 
     suspend fun setBiometricLock(enabled: Boolean) {
@@ -130,6 +187,23 @@ class SettingsDataStore(private val context: Context) {
         context.reserveDataStore.edit { it[LAST_SMS_SCAN_AT] = timestamp }
     }
 
+    /** Persists the hard lower bound for inbox scans. */
+    suspend fun setSmsScanStartEpochMs(epochMs: Long) {
+        context.reserveDataStore.edit { it[SMS_SCAN_START_EPOCH_MS] = epochMs }
+    }
+
+    suspend fun setHasCompletedOnboarding(completed: Boolean) {
+        context.reserveDataStore.edit { it[HAS_COMPLETED_ONBOARDING] = completed }
+    }
+
+    /** Single transaction so onboarding cannot be half-complete after a crash. */
+    suspend fun completeOnboarding(scanStartEpochMs: Long) {
+        context.reserveDataStore.edit { preferences ->
+            preferences[SMS_SCAN_START_EPOCH_MS] = scanStartEpochMs
+            preferences[HAS_COMPLETED_ONBOARDING] = true
+        }
+    }
+
     suspend fun addSmsImported(count: Int) {
         if (count <= 0) return
         context.reserveDataStore.edit {
@@ -143,6 +217,10 @@ class SettingsDataStore(private val context: Context) {
 
     suspend fun setUpdateChecksEnabled(enabled: Boolean) {
         context.reserveDataStore.edit { it[UPDATE_CHECKS_ENABLED] = enabled }
+    }
+
+    suspend fun setSwipeToDeleteEnabled(enabled: Boolean) {
+        context.reserveDataStore.edit { it[SWIPE_TO_DELETE_ENABLED] = enabled }
     }
 
     suspend fun setLastUpdateCheckAt(timestamp: Long) {
@@ -207,9 +285,12 @@ class SettingsDataStore(private val context: Context) {
             preferences[APP_ICON_ALIAS] = alias
             preferences[LAST_BACKUP_AT] = restored.lastBackupAt
             preferences[LAST_SMS_SCAN_AT] = restored.lastSmsScanAt
+            preferences[SMS_SCAN_START_EPOCH_MS] = restored.smsScanStartEpochMs
+            preferences[HAS_COMPLETED_ONBOARDING] = restored.hasCompletedOnboarding
             preferences[SMS_IMPORTED_TOTAL] = restored.smsImportedTotal
             preferences[LEDGER_REPAIRED_V3] = restored.ledgerRepairedV3
             preferences[UPDATE_CHECKS_ENABLED] = restored.updateChecksEnabled
+            preferences[SWIPE_TO_DELETE_ENABLED] = restored.swipeToDeleteEnabled
             preferences[LAST_UPDATE_CHECK_AT] = restored.lastUpdateCheckAt
             preferences[DISMISSED_UPDATE_VERSION] = restored.dismissedUpdateVersion
             preferences[SNOOZED_UPDATE_VERSION] = restored.snoozedUpdateVersion

@@ -24,6 +24,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
@@ -31,6 +32,8 @@ import androidx.compose.material.icons.rounded.ReceiptLong
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.SearchOff
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
@@ -49,6 +52,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -66,6 +70,7 @@ import com.app.reserve.core.designsystem.EmptyState
 import com.app.reserve.core.designsystem.LocalAmountsHidden
 import com.app.reserve.core.designsystem.LocalReserveColors
 import com.app.reserve.core.designsystem.MonthSwitcher
+import com.app.reserve.core.designsystem.radius_md
 import com.app.reserve.core.designsystem.ReserveDivider
 import com.app.reserve.core.designsystem.SheetHandle
 import com.app.reserve.core.designsystem.TransactionRow
@@ -84,6 +89,12 @@ private enum class TypeFilter(val label: String, val type: TransactionType?) {
 /** Null id = all categories, empty id = uncategorised rows. */
 private data class CategoryFilter(val id: String?, val label: String)
 
+private enum class TransactionSort(val label: String, val header: String = "") {
+    Newest("Newest"),
+    Largest("Largest first", "LARGEST AMOUNT FIRST"),
+    Smallest("Smallest first", "SMALLEST AMOUNT FIRST")
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TransactionsScreen(
@@ -91,11 +102,18 @@ fun TransactionsScreen(
     onEditTransaction: (TransactionEntity) -> Unit,
     onDeleteTransaction: (TransactionEntity) -> Unit,
     onPreviousMonth: () -> Unit,
-    onNextMonth: () -> Unit
+    onNextMonth: () -> Unit,
+    onGoToToday: () -> Unit = {},
+    swipeToDeleteEnabled: Boolean = false
 ) {
     val colors = LocalReserveColors.current
-    var query by remember { mutableStateOf("") }
+    var query by rememberSaveable { mutableStateOf("") }
     var filter by remember { mutableStateOf(TypeFilter.All) }
+    // Stored by name so rotation/process death restores the exact sort choice.
+    var sortName by rememberSaveable { mutableStateOf(TransactionSort.Newest.name) }
+    val sort = runCatching { TransactionSort.valueOf(sortName) }
+        .getOrDefault(TransactionSort.Newest)
+    var sortMenuExpanded by remember { mutableStateOf(false) }
     var selectedCategory by remember { mutableStateOf<CategoryFilter?>(null) }
     var selectedCategories by remember { mutableStateOf<Set<String>>(emptySet()) }
     var showCategorySheet by remember { mutableStateOf(false) }
@@ -129,7 +147,19 @@ fun TransactionsScreen(
             listOf(transaction.note, category, account)
                 .any { it.contains(needle, ignoreCase = true) }
         }
-        .sortedByDescending { it.timestamp }
+        .let { rows ->
+            when (sort) {
+                TransactionSort.Newest -> rows.sortedByDescending { it.timestamp }
+                TransactionSort.Largest -> rows.sortedWith(
+                    compareByDescending<TransactionEntity> { it.amount }
+                        .thenByDescending { it.timestamp }
+                )
+                TransactionSort.Smallest -> rows.sortedWith(
+                    compareBy<TransactionEntity> { it.amount }
+                        .thenByDescending { it.timestamp }
+                )
+            }
+        }
 
     val grouped = filtered.groupBy { Dates.toLocalDate(it.timestamp) }
         .toSortedMap(compareByDescending<LocalDate> { it })
@@ -147,7 +177,8 @@ fun TransactionsScreen(
         MonthSwitcher(
             monthYear = state.monthYear,
             onPrevious = onPreviousMonth,
-            onNext = onNextMonth
+            onNext = onNextMonth,
+            onToday = onGoToToday
         )
         SearchField(query = query, onQueryChange = { query = it })
 
@@ -218,38 +249,146 @@ fun TransactionsScreen(
                     )
                 )
             }
+            item {
+                Box {
+                    FilterChip(
+                        selected = sort != TransactionSort.Newest,
+                        onClick = { sortMenuExpanded = true },
+                        label = {
+                            Text(
+                                "Sort: ${sort.label}",
+                                style = MaterialTheme.typography.labelLarge.copy(
+                                    fontWeight = if (sort != TransactionSort.Newest) {
+                                        FontWeight.Bold
+                                    } else {
+                                        FontWeight.Medium
+                                    }
+                                )
+                            )
+                        },
+                        trailingIcon = {
+                            Icon(
+                                imageVector = Icons.Rounded.KeyboardArrowDown,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        },
+                        colors = FilterChipDefaults.filterChipColors(
+                            containerColor = colors.surface,
+                            labelColor = colors.textLight,
+                            selectedContainerColor = colors.primaryContainer,
+                            selectedLabelColor = colors.primaryDefault
+                        ),
+                        border = FilterChipDefaults.filterChipBorder(
+                            enabled = true,
+                            selected = sort != TransactionSort.Newest,
+                            borderColor = colors.strokeFaint,
+                            selectedBorderColor = colors.primaryDefault
+                        )
+                    )
+                    DropdownMenu(
+                        expanded = sortMenuExpanded,
+                        onDismissRequest = { sortMenuExpanded = false },
+                        containerColor = colors.fillLight,
+                        shape = RoundedCornerShape(radius_md),
+                        tonalElevation = 0.dp
+                    ) {
+                        TransactionSort.entries.forEach { option ->
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        option.label,
+                                        color = if (option == sort) {
+                                            colors.primaryDefault
+                                        } else {
+                                            colors.textBase
+                                        }
+                                    )
+                                },
+                                leadingIcon = if (option == sort) {
+                                    {
+                                        Icon(
+                                            imageVector = Icons.Rounded.Check,
+                                            contentDescription = null,
+                                            tint = colors.primaryDefault,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+                                } else null,
+                                onClick = {
+                                    sortName = option.name
+                                    sortMenuExpanded = false
+                                }
+                            )
+                        }
+                    }
+                }
+            }
         }
 
         if (filtered.isEmpty()) {
+            val hasFilters = query.isNotBlank() || filter != TypeFilter.All || hasCategoryFilter
             EmptyState(
-                icon = if (query.isBlank()) Icons.Rounded.ReceiptLong else Icons.Rounded.SearchOff,
-                text = if (query.isBlank()) {
-                    "No transactions this month."
+                icon = if (hasFilters) Icons.Rounded.SearchOff else Icons.Rounded.ReceiptLong,
+                text = if (hasFilters) {
+                    "No transactions match these filters"
                 } else {
-                    "Nothing matches \"$query\"."
-                }
+                    "No transactions this month."
+                },
+                actionLabel = if (hasFilters) "Clear filters" else null,
+                onAction = if (hasFilters) {
+                    {
+                        query = ""
+                        filter = TypeFilter.All
+                        selectedCategory = null
+                        selectedCategories = emptySet()
+                    }
+                } else null
             )
         } else {
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 108.dp)
             ) {
-                grouped.forEach { (date, dayTransactions) ->
-                    item(key = "header-$date") {
-                        DayHeader(
-                            date = date,
-                            spent = dayTransactions
-                                .filter { it.type == TransactionType.EXPENSE }
-                                .sumOf { it.amount }
+                if (sort == TransactionSort.Newest) {
+                    grouped.forEach { (date, dayTransactions) ->
+                        item(key = "header-$date") {
+                            DayHeader(
+                                date = date,
+                                spent = dayTransactions
+                                    .filter { it.type == TransactionType.EXPENSE }
+                                    .sumOf { it.amount }
+                            )
+                        }
+                        items(
+                            items = dayTransactions,
+                            key = { it.id }
+                        ) { transaction ->
+                            SwipeRow(
+                                transaction = transaction,
+                                state = state,
+                                swipeToDeleteEnabled = swipeToDeleteEnabled,
+                                onEdit = { onEditTransaction(transaction) },
+                                onDelete = { onDeleteTransaction(transaction) }
+                            )
+                        }
+                    }
+                } else {
+                    item(key = "amount-sort-header") {
+                        Text(
+                            text = sort.header,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = colors.textLighter,
+                            modifier = Modifier.padding(
+                                start = 16.dp, end = 16.dp, top = 16.dp, bottom = 6.dp
+                            )
                         )
                     }
-                    items(
-                        items = dayTransactions,
-                        key = { it.id }
-                    ) { transaction ->
+                    items(items = filtered, key = { it.id }) { transaction ->
                         SwipeRow(
                             transaction = transaction,
                             state = state,
+                            swipeToDeleteEnabled = swipeToDeleteEnabled,
                             onEdit = { onEditTransaction(transaction) },
                             onDelete = { onDeleteTransaction(transaction) }
                         )
@@ -443,11 +582,8 @@ private fun SearchField(query: String, onQueryChange: (String) -> Unit) {
 private fun DayHeader(date: LocalDate, spent: Long) {
     val colors = LocalReserveColors.current
     val amountsHidden = LocalAmountsHidden.current
-    val label = when (date) {
-        LocalDate.now() -> "Today"
-        LocalDate.now().minusDays(1) -> "Yesterday"
-        else -> date.format(java.time.format.DateTimeFormatter.ofPattern("d MMM"))
-    }
+    // One localised source for Today / Yesterday / date labels.
+    val label = Dates.dayHeader(Dates.toTimestamp(date))
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -475,6 +611,7 @@ private fun DayHeader(date: LocalDate, spent: Long) {
 private fun SwipeRow(
     transaction: TransactionEntity,
     state: LedgerState,
+    swipeToDeleteEnabled: Boolean,
     onEdit: () -> Unit,
     onDelete: () -> Unit
 ) {
@@ -504,26 +641,7 @@ private fun SwipeRow(
         }
     }
 
-    SwipeToDismissBox(
-        state = dismissState,
-        enableDismissFromStartToEnd = false,
-        backgroundContent = {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(horizontal = 4.dp, vertical = 2.dp)
-                    .background(colors.warningDefault, RoundedCornerShape(16.dp))
-                    .padding(end = 24.dp),
-                contentAlignment = Alignment.CenterEnd
-            ) {
-                Icon(
-                    imageVector = Icons.Rounded.DeleteOutline,
-                    contentDescription = "Delete",
-                    tint = Color.White
-                )
-            }
-        }
-    ) {
+    val rowContent: @Composable () -> Unit = {
         Surface(color = colors.fillBase) {
             Column {
                 TransactionRow(
@@ -537,7 +655,34 @@ private fun SwipeRow(
         }
     }
 
-    if (confirmDelete) {
+    if (swipeToDeleteEnabled) {
+        SwipeToDismissBox(
+            state = dismissState,
+            enableDismissFromStartToEnd = false,
+            backgroundContent = {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 4.dp, vertical = 2.dp)
+                        .background(colors.warningDefault, RoundedCornerShape(16.dp))
+                        .padding(end = 24.dp),
+                    contentAlignment = Alignment.CenterEnd
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.DeleteOutline,
+                        contentDescription = "Delete",
+                        tint = Color.White
+                    )
+                }
+            }
+        ) {
+            rowContent()
+        }
+    } else {
+        rowContent()
+    }
+
+    if (swipeToDeleteEnabled && confirmDelete) {
         AlertDialog(
             onDismissRequest = { confirmDelete = false },
             containerColor = colors.fillLight,
