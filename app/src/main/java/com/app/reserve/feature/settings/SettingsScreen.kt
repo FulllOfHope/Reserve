@@ -150,6 +150,7 @@ fun SettingsScreen(
     updateCheckMessage: String? = null,
     onToggleUpdateChecks: (Boolean) -> Unit = {},
     onToggleSwipeToDelete: (Boolean) -> Unit = {},
+    onToggleSafeToSpend: (Boolean) -> Unit = {},
     onCheckForUpdates: () -> Unit = {},
     onDismissUpdateCheckMessage: () -> Unit = {}
 ) {
@@ -412,6 +413,44 @@ fun SettingsScreen(
                                 modifier = Modifier.weight(1f)
                             )
                         }
+                    }
+
+                    ReserveDivider(modifier = Modifier.padding(vertical = spacing_lg))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.PieChart,
+                            contentDescription = null,
+                            tint = colors.primaryDefault,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.size(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Safe to spend",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = colors.textBase
+                            )
+                            Text(
+                                text = "Show the forecast pill on Home. Off by default.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = colors.textLight
+                            )
+                        }
+                        Switch(
+                            checked = settings?.showSafeToSpend == true,
+                            onCheckedChange = onToggleSafeToSpend,
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = colors.textReverse,
+                                checkedTrackColor = colors.primaryDefault,
+                                uncheckedThumbColor = colors.textLighter,
+                                uncheckedTrackColor = colors.fillDark,
+                                uncheckedBorderColor = colors.strokeFaint
+                            )
+                        )
                     }
 
                     ReserveDivider(modifier = Modifier.padding(vertical = spacing_lg))

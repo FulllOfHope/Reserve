@@ -24,6 +24,8 @@ data class BackupSettings(
     val updateChecksEnabled: Boolean = true,
     // Default false keeps v1/v2/v3 backups importable and swipes opt-in.
     val swipeToDeleteEnabled: Boolean = false,
+    // Default false keeps v1/v2/v3 backups importable and the pill opt-in.
+    val showSafeToSpend: Boolean = false,
     val lastUpdateCheckAt: Long = 0L,
     val dismissedUpdateVersion: String = "",
     val snoozedUpdateVersion: String = "",
@@ -47,6 +49,7 @@ fun ReserveSettings.toBackupSettings(): BackupSettings = BackupSettings(
     ledgerRepairedV3 = ledgerRepairedV3,
     updateChecksEnabled = updateChecksEnabled,
     swipeToDeleteEnabled = swipeToDeleteEnabled,
+    showSafeToSpend = showSafeToSpend,
     lastUpdateCheckAt = lastUpdateCheckAt,
     dismissedUpdateVersion = dismissedUpdateVersion,
     snoozedUpdateVersion = snoozedUpdateVersion,
@@ -70,6 +73,7 @@ fun BackupSettings.toReserveSettings(): ReserveSettings = ReserveSettings(
     ledgerRepairedV3 = ledgerRepairedV3,
     updateChecksEnabled = updateChecksEnabled,
     swipeToDeleteEnabled = swipeToDeleteEnabled,
+    showSafeToSpend = showSafeToSpend,
     lastUpdateCheckAt = lastUpdateCheckAt,
     dismissedUpdateVersion = dismissedUpdateVersion,
     snoozedUpdateVersion = snoozedUpdateVersion,

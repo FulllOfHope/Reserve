@@ -7,6 +7,7 @@ import com.app.reserve.core.database.CategoryEntity
 import com.app.reserve.core.database.RecurringEntity
 import com.app.reserve.core.database.ReserveDatabase
 import com.app.reserve.core.database.SmsImportEntity
+import com.app.reserve.core.database.ToBePaidEntity
 import com.app.reserve.core.database.TransactionEntity
 import com.app.reserve.core.database.TransactionType
 import com.app.reserve.core.datastore.SettingsDataStore
@@ -14,6 +15,8 @@ import com.app.reserve.core.domain.Dates
 import com.app.reserve.core.domain.LedgerMath
 import com.app.reserve.core.domain.LedgerReconciliation
 import com.app.reserve.core.domain.ParsedSms
+import com.app.reserve.core.domain.PendingToBePaidMatch
+import com.app.reserve.core.domain.ToBePaidMatching
 import com.app.reserve.core.domain.LedgerReconciliation.PendingBalanceDiscrepancy
 import java.time.Instant
 import java.time.LocalDate
@@ -58,6 +61,7 @@ class ReserveRepository(
     private val budgetDao get() = database.budgetDao()
     private val recurringDao get() = database.recurringDao()
     private val smsImportDao get() = database.smsImportDao()
+    private val toBePaidDao get() = database.toBePaidDao()
 
     val transactions: Flow<List<TransactionEntity>> = transactionDao.observeAll()
     val trashedTransactions: Flow<List<TransactionEntity>> = transactionDao.observeTrashed()
@@ -65,10 +69,15 @@ class ReserveRepository(
     val accounts: Flow<List<AccountEntity>> = accountDao.observeAll()
     val budgets: Flow<List<BudgetEntity>> = budgetDao.observeAll()
     val recurringRules: Flow<List<RecurringEntity>> = recurringDao.observeAll()
+    val toBePaid: Flow<List<ToBePaidEntity>> = toBePaidDao.observeAll()
 
     /** Bank balances that disagree with the ledger and need user verification. */
     val pendingBalanceDiscrepancies: Flow<List<PendingBalanceDiscrepancy>> =
         settings.pendingBalanceDiscrepancies
+
+    /** Device-local "was this SMS the planned one?" queue. */
+    val pendingToBePaidMatches: Flow<List<PendingToBePaidMatch>> =
+        settings.pendingToBePaidMatches
 
     suspend fun ensureSeeded() {
         if (categoryDao.getAll().isEmpty()) seedCategories()
@@ -447,6 +456,97 @@ class ReserveRepository(
     }
 
     // ---------------------------------------------------------------------
+    // To Be Paid — future one-off reminders. They never move a balance until
+    // they are settled, and settling always produces at most one real row.
+    // ---------------------------------------------------------------------
+
+    suspend fun saveToBePaid(item: ToBePaidEntity) {
+        toBePaidDao.upsert(item)
+    }
+
+    suspend fun deleteToBePaid(id: String) {
+        toBePaidDao.deleteById(id)
+    }
+
+    suspend fun allToBePaid(): List<ToBePaidEntity> = toBePaidDao.getAll()
+
+    /**
+     * Checklist completion: creates one real transaction and links it to the
+     * reminder in the same DB transaction. Repeated taps are no-ops.
+     */
+    suspend fun markToBePaidAsPaid(
+        id: String,
+        now: Long = System.currentTimeMillis()
+    ): TransactionEntity? {
+        var created: TransactionEntity? = null
+        database.withTransaction {
+            val reminder = toBePaidDao.getById(id) ?: return@withTransaction
+            if (reminder.isSettled) return@withTransaction
+            val note = listOf(reminder.title, reminder.note.trim())
+                .filter { it.isNotBlank() }
+                .joinToString(" • ")
+            val transaction = TransactionEntity(
+                id = UUID.randomUUID().toString(),
+                amount = reminder.amount,
+                type = reminder.type,
+                categoryId = reminder.categoryId,
+                accountId = reminder.accountId,
+                timestamp = now,
+                note = note
+            )
+            applyBalance(transaction, reverse = false)
+            transactionDao.insert(transaction)
+            toBePaidDao.settle(id, transaction.id, now, "MANUAL")
+            created = transaction
+        }
+        if (created != null) settings.dismissToBePaidMatch(id)
+        return created
+    }
+
+    /**
+     * Confirms an SMS row was the planned movement. The transaction already
+     * exists and has already changed the balance, so this only links the two
+     * rows and clears the prompt — it never creates a second transaction.
+     */
+    suspend fun confirmToBePaidMatch(match: PendingToBePaidMatch) {
+        database.withTransaction {
+            val reminder = toBePaidDao.getById(match.reminderId) ?: return@withTransaction
+            if (reminder.isSettled) return@withTransaction
+            val transaction = transactionDao.getByIdIncludingDeleted(match.transactionId)
+                ?: return@withTransaction
+            if (transaction.deletedAt != null) return@withTransaction
+            toBePaidDao.settle(reminder.id, transaction.id, System.currentTimeMillis(), "SMS_MATCH")
+        }
+        settings.dismissToBePaidMatch(match.reminderId)
+    }
+
+    suspend fun dismissToBePaidMatch(match: PendingToBePaidMatch) {
+        settings.dismissToBePaidMatch(match.reminderId)
+    }
+
+    /** Best single candidate for a freshly imported SMS, if one is outstanding. */
+    private suspend fun findToBePaidMatch(transaction: TransactionEntity): PendingToBePaidMatch? {
+        if (transaction.type == TransactionType.TRANSFER) return null
+        val window = ToBePaidMatching.MATCH_WINDOW_MILLIS
+        val reminder = toBePaidDao.findMatchCandidates(
+            type = transaction.type,
+            amount = transaction.amount,
+            from = transaction.timestamp - window,
+            to = transaction.timestamp + window,
+            anchor = transaction.timestamp
+        ).firstOrNull() ?: return null
+        if (!ToBePaidMatching.isCandidate(reminder, transaction)) return null
+        return PendingToBePaidMatch(
+            reminderId = reminder.id,
+            reminderTitle = reminder.title,
+            transactionId = transaction.id,
+            transactionNote = transaction.note,
+            amountMinor = transaction.amount,
+            transactionTimestamp = transaction.timestamp
+        )
+    }
+
+    // ---------------------------------------------------------------------
     // Backup / restore / import helpers
     // ---------------------------------------------------------------------
 
@@ -455,7 +555,8 @@ class ReserveRepository(
         categories = categoryDao.getAll(),
         transactions = transactionDao.getAllIncludingDeleted(),
         budgets = budgetDao.getAll(),
-        recurring = recurringDao.getAll()
+        recurring = recurringDao.getAll(),
+        toBePaid = toBePaidDao.getAll()
     )
 
     suspend fun replaceAll(snapshot: LedgerSnapshot) {
@@ -463,6 +564,7 @@ class ReserveRepository(
             transactionDao.clear()
             budgetDao.clear()
             recurringDao.clear()
+            toBePaidDao.clear()
             categoryDao.clear()
             accountDao.clear()
             categoryDao.insertAll(snapshot.categories)
@@ -470,10 +572,12 @@ class ReserveRepository(
             transactionDao.insertAll(snapshot.transactions)
             snapshot.budgets.forEach { budgetDao.upsert(it) }
             snapshot.recurring.forEach { recurringDao.upsert(it) }
+            toBePaidDao.insertAll(snapshot.toBePaid)
         }
         // Device-local prompts belong to the ledger that produced them. Never
         // carry them across a restore, including the LedgerViewModel path.
         settings.clearBalanceDiscrepancies()
+        settings.clearToBePaidMatches()
     }
 
     suspend fun importTransactions(
@@ -623,6 +727,7 @@ class ReserveRepository(
         val ordered = messages.sortedBy { it.timestamp }
         val createdAccountIds = linkedSetOf<String>()
         val newestBalances = linkedMapOf<String, SmsBalanceObservation>()
+        val matchedReminders = mutableListOf<PendingToBePaidMatch>()
         database.withTransaction {
             val accountsByName = accountDao.getAll()
                 .associateByTo(mutableMapOf()) { it.name.lowercase(Locale.ROOT) }
@@ -706,6 +811,7 @@ class ReserveRepository(
                         )
                         applyBalance(transaction, reverse = false)
                         transactionDao.insert(transaction)
+                        findToBePaidMatch(transaction)?.let { matchedReminders += it }
 
                         // No per-message balance correction here. New accounts
                         // are anchored and established accounts are verified
@@ -722,7 +828,14 @@ class ReserveRepository(
                 }
             }
         }
-        return SmsImportResult(imported, duplicates, createdAccountIds.toSet(), newestBalances.toMap())
+        if (matchedReminders.isNotEmpty()) settings.enqueueToBePaidMatches(matchedReminders)
+        return SmsImportResult(
+            imported = imported,
+            duplicates = duplicates,
+            createdAccountIds = createdAccountIds.toSet(),
+            newestBalances = newestBalances.toMap(),
+            pendingToBePaidMatches = matchedReminders
+        )
     }
 
     private suspend fun recordSmsImport(
@@ -917,7 +1030,9 @@ data class LedgerSnapshot(
     val categories: List<CategoryEntity>,
     val transactions: List<TransactionEntity>,
     val budgets: List<BudgetEntity>,
-    val recurring: List<RecurringEntity>
+    val recurring: List<RecurringEntity>,
+    /** Additive field; defaults keep older call sites and backups valid. */
+    val toBePaid: List<ToBePaidEntity> = emptyList()
 )
 
 data class ImportedTransaction(
@@ -945,5 +1060,7 @@ data class SmsImportResult(
     /** Accounts first created by this import; they need balance anchoring. */
     val createdAccountIds: Set<String> = emptySet(),
     /** Newest SMS balance per account, to be processed once after all batches. */
-    val newestBalances: Map<String, SmsBalanceObservation> = emptyMap()
+    val newestBalances: Map<String, SmsBalanceObservation> = emptyMap(),
+    /** Planned reminders that look like one of the newly imported SMS rows. */
+    val pendingToBePaidMatches: List<PendingToBePaidMatch> = emptyList()
 )

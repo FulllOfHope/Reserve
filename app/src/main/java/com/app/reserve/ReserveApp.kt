@@ -29,6 +29,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AccountBalance
 import androidx.compose.material.icons.outlined.Backup
+import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.Category
 import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.Description
@@ -41,6 +42,7 @@ import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.CalendarMonth
 import androidx.compose.material.icons.rounded.Menu
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -101,6 +103,7 @@ import com.app.reserve.core.database.TransactionEntity
 import com.app.reserve.core.database.TransactionType
 import com.app.reserve.core.domain.BackupManager
 import com.app.reserve.core.domain.BackupPreview
+import com.app.reserve.core.domain.Money
 import com.app.reserve.core.domain.OnboardingGate
 import com.app.reserve.core.domain.SmartImportAnalysis
 import com.app.reserve.core.domain.SmartImporter
@@ -111,6 +114,7 @@ import com.app.reserve.core.designsystem.spacing_lg
 import com.app.reserve.core.designsystem.spacing_md
 import com.app.reserve.core.designsystem.spacing_xxl
 import com.app.reserve.core.datastore.ThemeMode
+import com.app.reserve.feature.add.AddChoiceSheet
 import com.app.reserve.feature.add.AddTransactionScreen
 import com.app.reserve.feature.budgets.BudgetsScreen
 import com.app.reserve.feature.home.HomeScreen
@@ -128,6 +132,7 @@ import com.app.reserve.feature.settings.SettingsViewModel
 import com.app.reserve.ui.BottomBarMetrics
 import com.app.reserve.feature.settings.SmartImportSheet
 import com.app.reserve.feature.sms.BalanceVerificationSheet
+import com.app.reserve.feature.topaid.ToBePaidScreen
 import com.app.reserve.feature.trash.TrashScreen
 import com.app.reserve.feature.transactions.TransactionsScreen
 import com.app.reserve.feature.update.UpdateSheet
@@ -402,9 +407,12 @@ private fun MainNavigation(
     var localBackups by remember { mutableStateOf(emptyList<BackupCoordinator.BackupFile>()) }
     var showDrawerRestoreSheet by remember { mutableStateOf(false) }
     var showSpendingCalendar by remember { mutableStateOf(false) }
+    var showAddChoiceSheet by rememberSaveable { mutableStateOf(false) }
     var pendingDrawerRestore by remember { mutableStateOf<PendingDrawerRestore?>(null) }
     val settingsFlow by settingsViewModel.settings.collectAsStateWithLifecycle()
     val pendingDiscrepancies by ledgerViewModel.pendingBalanceDiscrepancies
+        .collectAsStateWithLifecycle()
+    val pendingPlannedMatches by ledgerViewModel.pendingToBePaidMatches
         .collectAsStateWithLifecycle()
     var onboardingDismissed by rememberSaveable { mutableStateOf(false) }
     val smsPermissionGranted = ContextCompat.checkSelfPermission(
@@ -851,6 +859,46 @@ private fun MainNavigation(
         )
     }
 
+    // SMS amount match: one question at a time, backed by a persisted queue so
+    // a background receiver's prompt survives process death. Linking only
+    // completes the reminder — the SMS row is already a real transaction.
+    val currentPlannedMatch = pendingPlannedMatches.firstOrNull()
+    if (!showWelcome && currentDiscrepancy == null && currentPlannedMatch != null) {
+        AlertDialog(
+            onDismissRequest = {
+                ledgerViewModel.dismissToBePaidMatch(currentPlannedMatch)
+                application.container.toBePaidNotifier.cancel(currentPlannedMatch)
+            },
+            containerColor = colors.fillLight,
+            titleContentColor = colors.textBase,
+            textContentColor = colors.textLight,
+            title = { Text("Was this SMS your planned payment?") },
+            text = {
+                Text(
+                    "${Money.format(currentPlannedMatch.amountMinor)} matches “" +
+                        "${currentPlannedMatch.reminderTitle}”. The SMS is already in your ledger; " +
+                        "link it to the reminder so it is not counted twice."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    ledgerViewModel.confirmToBePaidMatch(currentPlannedMatch)
+                    application.container.toBePaidNotifier.cancel(currentPlannedMatch)
+                }) {
+                    Text("Yes, link it", color = colors.primaryDefault)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    ledgerViewModel.dismissToBePaidMatch(currentPlannedMatch)
+                    application.container.toBePaidNotifier.cancel(currentPlannedMatch)
+                }) {
+                    Text("No, keep separate", color = colors.textLight)
+                }
+            }
+        )
+    }
+
     ModalNavigationDrawer(
         drawerState = drawerState,
         // While open, the drawer owns horizontal drags on every pager tab — the
@@ -912,6 +960,9 @@ private fun MainNavigation(
                 }
                 DrawerItem("Recurring", Icons.Outlined.Repeat) {
                     navController.navigate(Routes.Recurring) { launchSingleTop = true }
+                }
+                DrawerItem("To Be Paid", Icons.Outlined.CalendarMonth) {
+                    navController.navigate(Routes.ToBePaid) { launchSingleTop = true }
                 }
 
                 DrawerGroupDivider()
@@ -1061,10 +1112,10 @@ private fun MainNavigation(
                                         )
                                     }
                                 }
-                                IconButton(onClick = { navController.navigate(Routes.add(TransactionType.EXPENSE.name)) }) {
+                                IconButton(onClick = { showAddChoiceSheet = true }) {
                                     Icon(
                                         imageVector = Icons.Rounded.Add,
-                                        contentDescription = "Add expense",
+                                        contentDescription = "Add",
                                         tint = colors.textBase
                                     )
                                 }
@@ -1077,7 +1128,7 @@ private fun MainNavigation(
                                 when (page) {
                                     0 -> HomeScreen(
                                         state = state,
-                                        onOpenAdd = { navController.navigate(Routes.add(TransactionType.EXPENSE.name)) },
+                                        onOpenAdd = { showAddChoiceSheet = true },
                                         onEditTransaction = { transaction ->
                                             navController.navigate(Routes.add(transaction.type.name, transaction.id))
                                         },
@@ -1092,6 +1143,16 @@ private fun MainNavigation(
                                         onChooseBalanceAccounts = onChooseBalanceAccounts,
                                         onSetCategory = { transaction, categoryId ->
                                             ledgerViewModel.setTransactionCategory(transaction, categoryId)
+                                        },
+                                        showSafeToSpend = settingsFlow?.showSafeToSpend == true,
+                                        onOpenToBePaid = {
+                                            navController.navigate(Routes.ToBePaid) { launchSingleTop = true }
+                                        },
+                                        onAddToBePaid = {
+                                            navController.navigate(Routes.ToBePaidAdd) { launchSingleTop = true }
+                                        },
+                                        onMarkToBePaid = { id ->
+                                            ledgerViewModel.markToBePaidAsPaid(id)
                                         }
                                     )
                                     1 -> TransactionsScreen(
@@ -1103,7 +1164,13 @@ private fun MainNavigation(
                                         onPreviousMonth = { ledgerViewModel.shiftMonth(-1) },
                                         onNextMonth = { ledgerViewModel.shiftMonth(1) },
                                         onGoToToday = { ledgerViewModel.goToCurrentMonth() },
-                                        swipeToDeleteEnabled = settingsFlow?.swipeToDeleteEnabled == true
+                                        swipeToDeleteEnabled = settingsFlow?.swipeToDeleteEnabled == true,
+                                        onMarkToBePaid = { id ->
+                                            ledgerViewModel.markToBePaidAsPaid(id)
+                                        },
+                                        onOpenToBePaid = {
+                                            navController.navigate(Routes.ToBePaid) { launchSingleTop = true }
+                                        }
                                     )
                                     2 -> InsightsScreen(
                                         state = state,
@@ -1147,6 +1214,9 @@ private fun MainNavigation(
                                         onToggleUpdateChecks = settingsViewModel::setUpdateChecksEnabled,
                                         onToggleSwipeToDelete = { enabled ->
                                             settingsViewModel.setSwipeToDeleteEnabled(enabled)
+                                        },
+                                        onToggleSafeToSpend = { enabled ->
+                                            settingsViewModel.setShowSafeToSpend(enabled)
                                         },
                                         onCheckForUpdates = settingsViewModel::checkForUpdatesNow,
                                         onDismissUpdateCheckMessage = settingsViewModel::clearUpdateCheckMessage
@@ -1215,6 +1285,9 @@ private fun MainNavigation(
                             onToggleUpdateChecks = settingsViewModel::setUpdateChecksEnabled,
                             onToggleSwipeToDelete = { enabled ->
                                 settingsViewModel.setSwipeToDeleteEnabled(enabled)
+                            },
+                            onToggleSafeToSpend = { enabled ->
+                                settingsViewModel.setShowSafeToSpend(enabled)
                             },
                             onCheckForUpdates = settingsViewModel::checkForUpdatesNow,
                             onDismissUpdateCheckMessage = settingsViewModel::clearUpdateCheckMessage
@@ -1292,6 +1365,25 @@ private fun MainNavigation(
                             onBack = { navController.navigateUp() }
                         )
                     }
+                    composable(Routes.ToBePaid) {
+                        ToBePaidScreen(
+                            state = state,
+                            onSave = { ledgerViewModel.saveToBePaid(it) },
+                            onDelete = { ledgerViewModel.deleteToBePaid(it) },
+                            onMarkPaid = { ledgerViewModel.markToBePaidAsPaid(it) },
+                            onBack = { navController.navigateUp() }
+                        )
+                    }
+                    composable(Routes.ToBePaidAdd) {
+                        ToBePaidScreen(
+                            state = state,
+                            onSave = { ledgerViewModel.saveToBePaid(it) },
+                            onDelete = { ledgerViewModel.deleteToBePaid(it) },
+                            onMarkPaid = { ledgerViewModel.markToBePaidAsPaid(it) },
+                            onBack = { navController.navigateUp() },
+                            startAdding = true
+                        )
+                    }
                     composable(Routes.Trash) {
                         TrashScreen(
                             state = state,
@@ -1307,6 +1399,24 @@ private fun MainNavigation(
                     SpendingCalendarSheet(
                         state = state,
                         onDismiss = { showSpendingCalendar = false }
+                    )
+                }
+
+                if (showAddChoiceSheet) {
+                    AddChoiceSheet(
+                        onDismiss = { showAddChoiceSheet = false },
+                        onAddExpense = {
+                            showAddChoiceSheet = false
+                            navController.navigate(Routes.add(TransactionType.EXPENSE.name))
+                        },
+                        onAddIncome = {
+                            showAddChoiceSheet = false
+                            navController.navigate(Routes.add(TransactionType.INCOME.name))
+                        },
+                        onAddToBePaid = {
+                            showAddChoiceSheet = false
+                            navController.navigate(Routes.ToBePaidAdd) { launchSingleTop = true }
+                        }
                     )
                 }
 

@@ -79,6 +79,11 @@ class SettingsViewModel(
         viewModelScope.launch { settingsDataStore.setSwipeToDeleteEnabled(enabled) }
     }
 
+    /** Opt-in only: the Home forecast pill stays out of the way by default. */
+    fun setShowSafeToSpend(enabled: Boolean) {
+        viewModelScope.launch { settingsDataStore.setShowSafeToSpend(enabled) }
+    }
+
     /** Manual check: ignores the 6-hour gate so the button always does something. */
     fun checkForUpdatesNow() {
         val repository = updateRepository ?: return

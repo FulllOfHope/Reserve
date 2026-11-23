@@ -612,7 +612,8 @@ private fun CustomDateTimePickerDialog(
                 val totalGridCells = firstDayOfWeek + daysInMonth
                 val rows = (totalGridCells + 6) / 7
 
-                // Sunday-first labels match the offset used for the day grid.
+                // Seven equal columns keep Sunday centered even on narrow
+                // dialogs; fixed day widths plus SpaceBetween crowded it.
                 Row(modifier = Modifier.fillMaxWidth()) {
                     listOf("S", "M", "T", "W", "T", "F", "S").forEach { label ->
                         Text(
@@ -620,43 +621,45 @@ private fun CustomDateTimePickerDialog(
                             style = MaterialTheme.typography.labelSmall,
                             color = colors.textLighter,
                             textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                            modifier = Modifier.width(44.dp)
+                            modifier = Modifier.weight(1f)
                         )
                     }
                 }
-                Spacer(modifier = Modifier.height(8.dp))
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     for (row in 0 until rows) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
+                        Row(modifier = Modifier.fillMaxWidth()) {
                             for (col in 0 until 7) {
                                 val cellIndex = row * 7 + col
                                 val dayNum = cellIndex - firstDayOfWeek + 1
-                                if (dayNum in 1..daysInMonth) {
-                                    val isSelected = selectedDate.year == displayingMonthYear.year &&
-                                            selectedDate.month == displayingMonthYear.month &&
-                                            selectedDate.dayOfMonth == dayNum
-                                    Surface(
-                                        modifier = Modifier
-                                            .size(44.dp)
-                                            .clickable(onClickLabel = "Select day $dayNum") {
-                                                selectedDate = LocalDate.of(displayingMonthYear.year, displayingMonthYear.month, dayNum)
-                                            },
-                                        shape = RoundedCornerShape(radius_md),
-                                        color = if (isSelected) colors.primaryDefault else Color.Transparent
-                                    ) {
-                                        Box(contentAlignment = Alignment.Center) {
-                                            Text(
-                                                text = "$dayNum",
-                                                style = MaterialTheme.typography.bodyMedium,
-                                                color = if (isSelected) colors.textReverse else colors.textBase
-                                            )
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .heightIn(min = 44.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    if (dayNum in 1..daysInMonth) {
+                                        val isSelected = selectedDate.year == displayingMonthYear.year &&
+                                                selectedDate.month == displayingMonthYear.month &&
+                                                selectedDate.dayOfMonth == dayNum
+                                        Surface(
+                                            modifier = Modifier
+                                                .size(40.dp)
+                                                .clickable(onClickLabel = "Select day $dayNum") {
+                                                    selectedDate = LocalDate.of(displayingMonthYear.year, displayingMonthYear.month, dayNum)
+                                                },
+                                            shape = RoundedCornerShape(radius_md),
+                                            color = if (isSelected) colors.primaryDefault else Color.Transparent
+                                        ) {
+                                            Box(contentAlignment = Alignment.Center) {
+                                                Text(
+                                                    text = "$dayNum",
+                                                    style = MaterialTheme.typography.bodyMedium,
+                                                    color = if (isSelected) colors.textReverse else colors.textBase
+                                                )
+                                            }
                                         }
                                     }
-                                } else {
-                                    Spacer(modifier = Modifier.size(44.dp))
                                 }
                             }
                         }

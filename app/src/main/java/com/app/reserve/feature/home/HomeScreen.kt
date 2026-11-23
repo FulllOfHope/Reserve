@@ -49,6 +49,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.app.reserve.core.database.AccountEntity
+import com.app.reserve.core.database.ToBePaidEntity
 import com.app.reserve.core.database.TransactionEntity
 import com.app.reserve.core.designsystem.BudgetBar
 import com.app.reserve.core.designsystem.CategoryChip
@@ -94,12 +95,17 @@ fun HomeScreen(
     onOpenMenu: () -> Unit,
     onToggleHideAmounts: (Boolean) -> Unit = {},
     onChooseBalanceAccounts: (Set<String>?) -> Unit = {},
-    onSetCategory: (TransactionEntity, String) -> Unit = { _, _ -> }
+    onSetCategory: (TransactionEntity, String) -> Unit = { _, _ -> },
+    showSafeToSpend: Boolean = false,
+    onOpenToBePaid: () -> Unit = {},
+    onAddToBePaid: () -> Unit = {},
+    onMarkToBePaid: (String) -> Unit = {}
 ) {
     val colors = LocalReserveColors.current
     val amountsHidden = LocalAmountsHidden.current
     val recent = state.monthTransactions.sortedByDescending { it.timestamp }.take(3)
     val budgets = state.monthBudgets
+    val upcomingPlans = state.outstandingToBePaid.sortedBy { it.dueAt }.take(3)
     var activeActionSheetTransaction by remember { mutableStateOf<TransactionEntity?>(null) }
     var categoryPickerTransaction by remember { mutableStateOf<TransactionEntity?>(null) }
     var showBalanceAccounts by remember { mutableStateOf(false) }
@@ -109,7 +115,8 @@ fun HomeScreen(
         monthYear = state.monthYear,
         budgets = state.budgets,
         transactions = state.visibleTransactions,
-        recurring = state.recurring
+        recurring = state.recurring,
+        toBePaid = state.outstandingToBePaid
     )
 
     Column(modifier = Modifier.fillMaxSize()) {
@@ -227,48 +234,50 @@ fun HomeScreen(
                             )
                         }
                         Spacer(modifier = Modifier.height(16.dp))
-                        Surface(
-                            onClick = { showForecast = true },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .heightIn(min = 48.dp),
-                            shape = RoundedCornerShape(radius_md),
-                            color = colors.fillLight,
-                            border = BorderStroke(1.dp, colors.strokeFaint)
-                        ) {
-                            Row(
+                        if (showSafeToSpend) {
+                            Surface(
+                                onClick = { showForecast = true },
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(horizontal = spacing_md, vertical = spacing_sm),
-                                verticalAlignment = Alignment.CenterVertically
+                                    .heightIn(min = 48.dp),
+                                shape = RoundedCornerShape(radius_md),
+                                color = colors.fillLight,
+                                border = BorderStroke(1.dp, colors.strokeFaint)
                             ) {
-                                Column(modifier = Modifier.weight(1f)) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = spacing_md, vertical = spacing_sm),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = "SAFE TO SPEND",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = colors.textLighter
+                                        )
+                                        MoneyText(
+                                            amount = forecast.safeToSpend,
+                                            style = MaterialTheme.typography.titleMedium.tabular(),
+                                            color = colors.primaryDefault
+                                        )
+                                    }
                                     Text(
-                                        text = "SAFE TO SPEND",
+                                        text = if (Dates.isCurrentMonth(state.monthYear)) {
+                                            "${forecast.daysLeft} days left"
+                                        } else {
+                                            "View forecast"
+                                        },
                                         style = MaterialTheme.typography.labelSmall,
                                         color = colors.textLighter
                                     )
-                                    MoneyText(
-                                        amount = forecast.safeToSpend,
-                                        style = MaterialTheme.typography.titleMedium.tabular(),
-                                        color = colors.primaryDefault
+                                    Icon(
+                                        imageVector = Icons.Rounded.ChevronRight,
+                                        contentDescription = null,
+                                        tint = colors.textLighter,
+                                        modifier = Modifier.size(18.dp)
                                     )
                                 }
-                                Text(
-                                    text = if (Dates.isCurrentMonth(state.monthYear)) {
-                                        "${forecast.daysLeft} days left"
-                                    } else {
-                                        "View forecast"
-                                    },
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = colors.textLighter
-                                )
-                                Icon(
-                                    imageVector = Icons.Rounded.ChevronRight,
-                                    contentDescription = null,
-                                    tint = colors.textLighter,
-                                    modifier = Modifier.size(18.dp)
-                                )
                             }
                         }
                     }
@@ -357,6 +366,41 @@ fun HomeScreen(
 
             item {
                 SectionLabel(
+                    text = "To Be Paid",
+                    actionLabel = if (upcomingPlans.isEmpty()) "Add" else "See all",
+                    onAction = if (upcomingPlans.isEmpty()) onAddToBePaid else onOpenToBePaid
+                )
+            }
+
+            item {
+                ReserveCard(
+                    modifier = Modifier.padding(horizontal = EnteSpacing.xxl),
+                    onClick = onOpenToBePaid
+                ) {
+                    if (upcomingPlans.isEmpty()) {
+                        Text(
+                            text = "No upcoming one-off payments. Add a bill or a planned receipt here.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = colors.textLight
+                        )
+                    } else {
+                        upcomingPlans.forEachIndexed { index, item ->
+                            ToBePaidSummaryRow(
+                                item = item,
+                                onMarkPaid = { onMarkToBePaid(item.id) }
+                            )
+                            if (index != upcomingPlans.lastIndex) ReserveDivider()
+                        }
+                    }
+                }
+            }
+
+            item {
+                Spacer(modifier = Modifier.height(24.dp))
+            }
+
+            item {
+                SectionLabel(
                     text = "Recent",
                     actionLabel = if (recent.isEmpty()) null else "See all",
                     onAction = onSeeAll
@@ -429,12 +473,66 @@ fun HomeScreen(
         )
     }
 
-    if (showForecast) {
+    if (showSafeToSpend && showForecast) {
         MonthForecastSheet(
             forecast = forecast,
             hasBudgets = forecast.hasBudgets,
             monthYear = state.monthYear,
             onDismiss = { showForecast = false }
+        )
+    }
+}
+
+@Composable
+private fun ToBePaidSummaryRow(
+    item: ToBePaidEntity,
+    onMarkPaid: () -> Unit
+) {
+    val colors = LocalReserveColors.current
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = spacing_sm),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Checkbox(
+            checked = false,
+            onCheckedChange = { checked -> if (checked) onMarkPaid() },
+            colors = CheckboxDefaults.colors(
+                checkedColor = colors.primaryDefault,
+                uncheckedColor = colors.textLighter
+            )
+        )
+        Spacer(modifier = Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = item.title,
+                style = MaterialTheme.typography.bodyMedium,
+                color = colors.textBase,
+                maxLines = 1
+            )
+            Text(
+                text = buildString {
+                    append(Dates.fullDate(item.dueAt))
+                    append(" · ")
+                    append(if (item.type == com.app.reserve.core.database.TransactionType.INCOME) {
+                        "Expected income"
+                    } else {
+                        "Planned payment"
+                    })
+                },
+                style = MaterialTheme.typography.labelSmall,
+                color = colors.textLighter
+            )
+        }
+        MoneyText(
+            amount = item.amount,
+            style = MaterialTheme.typography.titleSmall.tabular(),
+            color = if (item.type == com.app.reserve.core.database.TransactionType.INCOME) {
+                colors.primaryDefault
+            } else {
+                colors.textBase
+            }
         )
     }
 }
@@ -491,6 +589,26 @@ private fun MonthForecastSheet(
                         forecast.upcomingRecurring,
                         colors.textBase
                     )
+                    if (forecast.plannedCount > 0) {
+                        ReserveDivider()
+                        ForecastRow(
+                            if (forecast.plannedCount == 1) {
+                                "To Be Paid"
+                            } else {
+                                "To Be Paid (${forecast.plannedCount})"
+                            },
+                            forecast.plannedOutgoing,
+                            colors.warningDefault
+                        )
+                        if (forecast.plannedIncoming > 0L) {
+                            ReserveDivider()
+                            ForecastRow(
+                                "Planned income (not yet spent)",
+                                forecast.plannedIncoming,
+                                colors.primaryDefault
+                            )
+                        }
+                    }
                     ReserveDivider()
                     ForecastRow("Spend at this pace", forecast.projectedSpend, colors.textBase)
                     ReserveDivider()
@@ -500,11 +618,11 @@ private fun MonthForecastSheet(
             Spacer(modifier = Modifier.height(16.dp))
             Text(
                 text = buildString {
-                    append("Safe to spend starts with the cash you have and the budget you have left, then subtracts recurring expenses still due this month. ")
+                    append("Safe to spend starts with the cash you have and the budget you have left, then subtracts recurring expenses and To Be Paid items still due this month. ")
                     if (!hasBudgets) {
                         append("With no budgets set, leftover income is used instead. ")
                     }
-                    append("The projection assumes your current spending pace continues. Transfers are never counted as spending.")
+                    append("Planned reminders never change your balance until you mark them paid. Planned income is not spent before it arrives.")
                 },
                 style = MaterialTheme.typography.bodySmall,
                 color = colors.textLighter

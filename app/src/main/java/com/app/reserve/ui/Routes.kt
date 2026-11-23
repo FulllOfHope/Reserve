@@ -11,6 +11,8 @@ object Routes {
     const val Categories = "categories"
     const val Accounts = "accounts"
     const val Recurring = "recurring"
+    const val ToBePaid = "to_be_paid"
+    const val ToBePaidAdd = "to_be_paid_add"
     const val Trash = "trash"
 
     fun add(type: String, id: String? = null): String =

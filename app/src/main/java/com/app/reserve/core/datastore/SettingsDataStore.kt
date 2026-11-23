@@ -11,6 +11,7 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.app.reserve.core.domain.LedgerReconciliation.PendingBalanceDiscrepancy
+import com.app.reserve.core.domain.PendingToBePaidMatch
 import com.app.reserve.core.util.IconSwitcher
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -39,6 +40,8 @@ data class ReserveSettings(
     val updateChecksEnabled: Boolean = true,
     /** Explicit opt-in; accidental swipes must never hide a transaction. */
     val swipeToDeleteEnabled: Boolean = false,
+    /** Off by default: the Home forecast pill is a deliberate opt-in. */
+    val showSafeToSpend: Boolean = false,
     val lastUpdateCheckAt: Long = 0L,
     val dismissedUpdateVersion: String = "",
     /** Reminder snooze is version-specific so a newer release can still notify. */
@@ -63,10 +66,12 @@ class SettingsDataStore(private val context: Context) {
         val SMS_SCAN_START_EPOCH_MS = longPreferencesKey("sms_scan_start_epoch_ms")
         val HAS_COMPLETED_ONBOARDING = booleanPreferencesKey("has_completed_onboarding")
         val PENDING_BALANCE_DISCREPANCIES = stringPreferencesKey("pending_balance_discrepancies")
+        val PENDING_TO_BE_PAID_MATCHES = stringPreferencesKey("pending_to_be_paid_matches")
         val SMS_IMPORTED_TOTAL = intPreferencesKey("sms_imported_total")
         val LEDGER_REPAIRED_V3 = booleanPreferencesKey("ledger_repaired_v3")
         val UPDATE_CHECKS_ENABLED = booleanPreferencesKey("update_checks_enabled")
         val SWIPE_TO_DELETE_ENABLED = booleanPreferencesKey("swipe_to_delete_enabled")
+        val SHOW_SAFE_TO_SPEND = booleanPreferencesKey("show_safe_to_spend")
         val LAST_UPDATE_CHECK_AT = longPreferencesKey("last_update_check_at")
         val DISMISSED_UPDATE_VERSION = stringPreferencesKey("dismissed_update_version")
         val SNOOZED_UPDATE_VERSION = stringPreferencesKey("snoozed_update_version")
@@ -93,6 +98,7 @@ class SettingsDataStore(private val context: Context) {
             ledgerRepairedV3 = preferences[LEDGER_REPAIRED_V3] ?: false,
             updateChecksEnabled = preferences[UPDATE_CHECKS_ENABLED] ?: true,
             swipeToDeleteEnabled = preferences[SWIPE_TO_DELETE_ENABLED] ?: false,
+            showSafeToSpend = preferences[SHOW_SAFE_TO_SPEND] ?: false,
             lastUpdateCheckAt = preferences[LAST_UPDATE_CHECK_AT] ?: 0L,
             dismissedUpdateVersion = preferences[DISMISSED_UPDATE_VERSION] ?: "",
             snoozedUpdateVersion = preferences[SNOOZED_UPDATE_VERSION] ?: "",
@@ -145,6 +151,45 @@ class SettingsDataStore(private val context: Context) {
     suspend fun clearBalanceDiscrepancies() {
         context.reserveDataStore.edit { it.remove(PENDING_BALANCE_DISCREPANCIES) }
     }
+
+    /**
+     * SMS/reminder confirmation queue. One prompt per reminder survives process
+     * death, so a match found by the receiver is still answered on app entry.
+     */
+    val pendingToBePaidMatches: Flow<List<PendingToBePaidMatch>> =
+        context.reserveDataStore.data.map { preferences ->
+            preferences[PENDING_TO_BE_PAID_MATCHES].orEmpty().decodePendingToBePaidMatches()
+        }
+
+    suspend fun enqueueToBePaidMatches(found: List<PendingToBePaidMatch>) {
+        if (found.isEmpty()) return
+        context.reserveDataStore.edit { preferences ->
+            val existing = preferences[PENDING_TO_BE_PAID_MATCHES].orEmpty()
+                .decodePendingToBePaidMatches()
+            preferences[PENDING_TO_BE_PAID_MATCHES] =
+                mergePendingToBePaidMatches(existing, found).encodePendingToBePaidMatches()
+        }
+    }
+
+    suspend fun dismissToBePaidMatch(reminderId: String) {
+        context.reserveDataStore.edit { preferences ->
+            val remaining = preferences[PENDING_TO_BE_PAID_MATCHES].orEmpty()
+                .decodePendingToBePaidMatches()
+                .filterNot { it.reminderId == reminderId }
+            if (remaining.isEmpty()) {
+                preferences.remove(PENDING_TO_BE_PAID_MATCHES)
+            } else {
+                preferences[PENDING_TO_BE_PAID_MATCHES] = remaining.encodePendingToBePaidMatches()
+            }
+        }
+    }
+
+    suspend fun clearToBePaidMatches() {
+        context.reserveDataStore.edit { it.remove(PENDING_TO_BE_PAID_MATCHES) }
+    }
+
+    suspend fun currentPendingToBePaidMatches(): List<PendingToBePaidMatch> =
+        pendingToBePaidMatches.first()
 
     suspend fun setBiometricLock(enabled: Boolean) {
         context.reserveDataStore.edit { it[BIOMETRIC_LOCK] = enabled }
@@ -223,6 +268,10 @@ class SettingsDataStore(private val context: Context) {
         context.reserveDataStore.edit { it[SWIPE_TO_DELETE_ENABLED] = enabled }
     }
 
+    suspend fun setShowSafeToSpend(enabled: Boolean) {
+        context.reserveDataStore.edit { it[SHOW_SAFE_TO_SPEND] = enabled }
+    }
+
     suspend fun setLastUpdateCheckAt(timestamp: Long) {
         context.reserveDataStore.edit { it[LAST_UPDATE_CHECK_AT] = timestamp }
     }
@@ -291,6 +340,7 @@ class SettingsDataStore(private val context: Context) {
             preferences[LEDGER_REPAIRED_V3] = restored.ledgerRepairedV3
             preferences[UPDATE_CHECKS_ENABLED] = restored.updateChecksEnabled
             preferences[SWIPE_TO_DELETE_ENABLED] = restored.swipeToDeleteEnabled
+            preferences[SHOW_SAFE_TO_SPEND] = restored.showSafeToSpend
             preferences[LAST_UPDATE_CHECK_AT] = restored.lastUpdateCheckAt
             preferences[DISMISSED_UPDATE_VERSION] = restored.dismissedUpdateVersion
             preferences[SNOOZED_UPDATE_VERSION] = restored.snoozedUpdateVersion

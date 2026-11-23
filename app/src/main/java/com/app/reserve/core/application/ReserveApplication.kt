@@ -12,6 +12,7 @@ import com.app.reserve.core.update.UpdateInstaller
 import com.app.reserve.core.update.UpdateNotifier
 import com.app.reserve.core.update.UpdateRepository
 import com.app.reserve.feature.sms.SmsImporter
+import com.app.reserve.feature.sms.ToBePaidNotifier
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -68,7 +69,8 @@ class AppContainer(application: Application) {
     val database: ReserveDatabase = ReserveDatabase.get(application)
     val settings = SettingsDataStore(application)
     val repository = ReserveRepository(database, settings)
-    val smsImporter = SmsImporter(application, repository, settings)
+    val toBePaidNotifier = ToBePaidNotifier(application)
+    val smsImporter = SmsImporter(application, repository, settings, toBePaidNotifier)
     val updateChecker = GitHubUpdateChecker(currentVersion = installedVersion(application))
     val updateNotifier = UpdateNotifier(application)
     val updateInstaller = UpdateInstaller(application, settings, updateNotifier)

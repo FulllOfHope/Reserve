@@ -27,7 +27,7 @@ Built with Kotlin, Jetpack Compose, Material 3, Room + SQLCipher, DataStore and 
 ### Also included
 
 - 💰 Current balance front and centre on the dashboard, with the month's spend, income and net below it
-- 🧮 A **Safe-to-Spend** pill and **Month Forecast** sheet that combine cash on hand, budget left and upcoming recurring expenses, with a plain-English explanation. No projections are uploaded or inferred from cloud data.
+- 🧮 An opt-in **Safe-to-Spend** pill and **Month Forecast** sheet that combine cash on hand, budget left, upcoming recurring expenses and one-off plans, with a plain-English explanation. The pill is off until enabled in Settings; no projections are uploaded or inferred from cloud data.
 - 📅 A **Spending Calendar** in the top bar: expenses only, per-day totals, and a Today jump from every month switcher when you are browsing another month
 - 🙈 One-tap hide-amounts mode on the dashboard (also a Settings switch) that masks every balance and transaction amount, including the widget
 - 💸 Expenses, income and account-to-account transfers (transfers are net-zero and excluded from budgets)
@@ -35,7 +35,8 @@ Built with Kotlin, Jetpack Compose, Material 3, Room + SQLCipher, DataStore and 
 - 🏷️ Custom categories with colour + icon, safe re-parenting to the matching *Unrecognized* category on deletion
 - 📊 Strict monthly budgets with no rollover, now with an inline **ahead/under pace** caption. The donut folds tail categories into a single **Other** slice (matching its legend), and the trend caption discloses its compressed scale.
 - 🔁 Recurring monthly rules that generate ordinary, editable transactions
-- 🔒 Optional biometric / device-credential app lock with a rotation-safe timeout, plus a device-local list of balance discrepancies to review after an SMS scan
+- 📆 **To Be Paid** — future one-off payments and expected receipts with a due date, title and note. They appear on Home, in the Transactions filter and in the forecast but never change a balance until you tick them off. An imported SMS with the same amount prompts you to link it; confirming creates no duplicate row, and a manual tick creates exactly one transaction.
+- 🔒 Optional biometric / device-credential app lock with a rotation-safe timeout, plus device-local queues for balance discrepancies and planned-payment SMS matches to review on app entry
 - 🌗 Light, dark and system themes with a custom accent-colour picker
 
 ---
@@ -153,7 +154,7 @@ The debug APK is written to `app/build/outputs/apk/debug/app-debug.apk`.
 
 ### Test coverage
 
-- **116 unit tests** — exact minor-unit money formatting/parsing, budget maths, pace and Safe-to-Spend forecast helpers, grouped Insights slices, transfer neutrality, CSV round-trip, v1/v2/v3 backup validation including settings and opening balance, amount-input behaviour, onboarding/scan-window guards, and 31 SMS parsing cases (bank formats, credit-card alerts, Indian digit grouping, balance isolation, OTP/promo/personal-message rejection, fingerprint stability).
+- **129 unit tests** — exact minor-unit money formatting/parsing, budget maths, pace and Safe-to-Spend forecast helpers including one-off plans, grouped Insights slices, transfer neutrality, CSV round-trip, v1/v2/v3 backup validation including settings, opening balance and additive fields, conservative planned-SMS matching and its persisted prompt queue, amount-input behaviour, onboarding/scan-window guards, and 31 SMS parsing cases (bank formats, credit-card alerts, Indian digit grouping, balance isolation, OTP/promo/personal-message rejection, fingerprint stability).
 - **3 instrumentation tests** — Compose smoke checks for the transaction row and transactions screen, plus a regression test that asserts `ReserveApplication` is registered in the manifest.
 
 ---

@@ -231,3 +231,56 @@ interface RecurringDao {
     @Query("DELETE FROM recurring_rules")
     suspend fun clear()
 }
+
+@Dao
+interface ToBePaidDao {
+    /** Outstanding first, then soonest due — the checklist order users expect. */
+    @Query("SELECT * FROM to_be_paid ORDER BY settledTransactionId IS NOT NULL, dueAt ASC, createdAt ASC")
+    fun observeAll(): Flow<List<ToBePaidEntity>>
+
+    @Query("SELECT * FROM to_be_paid ORDER BY dueAt ASC")
+    suspend fun getAll(): List<ToBePaidEntity>
+
+    @Query("SELECT * FROM to_be_paid WHERE id = :id")
+    suspend fun getById(id: String): ToBePaidEntity?
+
+    /**
+     * Candidate SMS matches: same amount and direction, due date near the
+     * message date, and not already settled. The repository applies the final
+     * pending-prompt guard before asking the user.
+     */
+    @Query(
+        """SELECT * FROM to_be_paid
+           WHERE settledTransactionId IS NULL AND type = :type AND amount = :amount
+             AND dueAt BETWEEN :from AND :to
+           ORDER BY ABS(dueAt - :anchor) ASC, dueAt ASC"""
+    )
+    suspend fun findMatchCandidates(
+        type: TransactionType,
+        amount: Long,
+        from: Long,
+        to: Long,
+        anchor: Long
+    ): List<ToBePaidEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(item: ToBePaidEntity)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(items: List<ToBePaidEntity>)
+
+    @Query("DELETE FROM to_be_paid WHERE id = :id")
+    suspend fun deleteById(id: String)
+
+    @Query(
+        """UPDATE to_be_paid
+           SET settledTransactionId = :transactionId,
+               settledAt = :settledAt,
+               settlementSource = :source
+           WHERE id = :id AND settledTransactionId IS NULL"""
+    )
+    suspend fun settle(id: String, transactionId: String, settledAt: Long, source: String)
+
+    @Query("DELETE FROM to_be_paid")
+    suspend fun clear()
+}

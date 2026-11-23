@@ -7,6 +7,7 @@ import com.app.reserve.core.database.AccountEntity
 import com.app.reserve.core.database.BudgetEntity
 import com.app.reserve.core.database.CategoryEntity
 import com.app.reserve.core.database.RecurringEntity
+import com.app.reserve.core.database.ToBePaidEntity
 import com.app.reserve.core.database.TransactionEntity
 import com.app.reserve.core.datastore.SettingsDataStore
 import com.app.reserve.core.domain.BackupManager
@@ -14,6 +15,7 @@ import com.app.reserve.core.domain.BudgetCalculator
 import com.app.reserve.core.domain.CsvManager
 import com.app.reserve.core.domain.Dates
 import com.app.reserve.core.domain.LedgerReconciliation.PendingBalanceDiscrepancy
+import com.app.reserve.core.domain.PendingToBePaidMatch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -32,6 +34,7 @@ data class LedgerState(
     val accounts: List<AccountEntity> = emptyList(),
     val budgets: List<BudgetEntity> = emptyList(),
     val recurring: List<RecurringEntity> = emptyList(),
+    val toBePaid: List<ToBePaidEntity> = emptyList(),
     val pendingDeletes: Set<String> = emptySet(),
     /** Null means all active accounts; an explicit set can be empty. */
     val balanceAccountIds: Set<String>? = null
@@ -58,6 +61,15 @@ data class LedgerState(
 
     val monthBudgets: List<BudgetEntity> get() = budgets.filter { it.monthYear == monthYear }
 
+    /** Settled reminders stay in the DB for history but leave the checklist. */
+    val outstandingToBePaid: List<ToBePaidEntity>
+        get() = toBePaid.filterNot { it.isSettled }
+
+    val monthToBePaid: List<ToBePaidEntity>
+        get() = outstandingToBePaid.filter {
+            Dates.monthKey(Dates.toLocalDate(it.dueAt)) == monthYear
+        }
+
     fun accountName(id: String?): String =
         accounts.firstOrNull { it.id == id }?.name ?: "Account"
 
@@ -83,7 +95,8 @@ class LedgerViewModel(
         val categories: List<CategoryEntity>,
         val accounts: List<AccountEntity>,
         val budgets: List<BudgetEntity>,
-        val recurring: List<RecurringEntity>
+        val recurring: List<RecurringEntity>,
+        val toBePaid: List<ToBePaidEntity> = emptyList()
     )
 
     private val bundle = combine(
@@ -96,8 +109,12 @@ class LedgerViewModel(
         Bundle(transactions, categories, accounts, budgets, recurring)
     }
 
+    private val ledgerBundle = combine(bundle, repository.toBePaid) { data, toBePaid ->
+        data.copy(toBePaid = toBePaid)
+    }
+
     val state: StateFlow<LedgerState> = combine(
-        bundle,
+        ledgerBundle,
         selectedMonth,
         pendingDeletes,
         repository.trashedTransactions,
@@ -112,6 +129,7 @@ class LedgerViewModel(
             accounts = data.accounts,
             budgets = data.budgets,
             recurring = data.recurring,
+            toBePaid = data.toBePaid,
             pendingDeletes = pending,
             balanceAccountIds = settings.balanceAccountIds
         )
@@ -124,6 +142,14 @@ class LedgerViewModel(
     /** Persisted queue from background SMS checks; survives process death. */
     val pendingBalanceDiscrepancies: StateFlow<List<PendingBalanceDiscrepancy>> =
         repository.pendingBalanceDiscrepancies.stateIn(
+            viewModelScope,
+            SharingStarted.WhileSubscribed(5_000),
+            emptyList()
+        )
+
+    /** Persisted SMS/reminder prompts; the app host shows them one at a time. */
+    val pendingToBePaidMatches: StateFlow<List<PendingToBePaidMatch>> =
+        repository.pendingToBePaidMatches.stateIn(
             viewModelScope,
             SharingStarted.WhileSubscribed(5_000),
             emptyList()
@@ -257,6 +283,28 @@ class LedgerViewModel(
 
     fun generateRecurring() {
         viewModelScope.launch { repository.generateDueRecurring() }
+    }
+
+    // -- To Be Paid ---------------------------------------------------------
+
+    fun saveToBePaid(item: ToBePaidEntity) {
+        viewModelScope.launch { repository.saveToBePaid(item) }
+    }
+
+    fun deleteToBePaid(id: String) {
+        viewModelScope.launch { repository.deleteToBePaid(id) }
+    }
+
+    fun markToBePaidAsPaid(id: String) {
+        viewModelScope.launch { repository.markToBePaidAsPaid(id) }
+    }
+
+    fun confirmToBePaidMatch(match: PendingToBePaidMatch) {
+        viewModelScope.launch { repository.confirmToBePaidMatch(match) }
+    }
+
+    fun dismissToBePaidMatch(match: PendingToBePaidMatch) {
+        viewModelScope.launch { repository.dismissToBePaidMatch(match) }
     }
 
     // -- Files --------------------------------------------------------------

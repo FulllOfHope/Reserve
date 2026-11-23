@@ -94,6 +94,32 @@ data class RecurringEntity(
     val paused: Boolean = false
 )
 
+/**
+ * A one-off future movement the user wants to remember. It never touches an
+ * account balance until it is settled; settling either links an existing SMS
+ * row or creates exactly one real transaction.
+ */
+@Entity(tableName = "to_be_paid")
+data class ToBePaidEntity(
+    @PrimaryKey val id: String,
+    val title: String,
+    /** Always positive, in minor units. */
+    val amount: Long,
+    val type: TransactionType,
+    val categoryId: String?,
+    val accountId: String,
+    val dueAt: Long,
+    val note: String = "",
+    val createdAt: Long = System.currentTimeMillis(),
+    /** Non-null once the reminder has been settled by a real ledger row. */
+    val settledTransactionId: String? = null,
+    val settledAt: Long? = null,
+    /** MANUAL or SMS_MATCH. Kept as text so old backups stay forgiving. */
+    val settlementSource: String? = null
+) {
+    val isSettled: Boolean get() = settledTransactionId != null
+}
+
 class Converters {
     @TypeConverter
     fun toType(value: String): TransactionType = TransactionType.valueOf(value)

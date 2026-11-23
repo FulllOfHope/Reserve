@@ -2,6 +2,7 @@ package com.app.reserve.core.domain
 
 import com.app.reserve.core.database.BudgetEntity
 import com.app.reserve.core.database.RecurringEntity
+import com.app.reserve.core.database.ToBePaidEntity
 import com.app.reserve.core.database.TransactionEntity
 import com.app.reserve.core.database.TransactionType
 import java.time.LocalDate
@@ -108,5 +109,73 @@ class MonthForecastTest {
         )
         assertEquals(0, result.daysLeft)
         assertEquals(30_000L, result.projectedSpend)
+    }
+
+    private fun plan(
+        id: String,
+        amount: Long,
+        type: TransactionType,
+        day: Int = 20,
+        settled: Boolean = false
+    ) = ToBePaidEntity(
+        id = id,
+        title = "Planned $id",
+        amount = amount,
+        type = type,
+        categoryId = null,
+        accountId = "cash",
+        dueAt = Dates.toTimestamp(LocalDate.of(2026, 11, day)),
+        settledTransactionId = if (settled) "posted-$id" else null
+    )
+
+    @Test
+    fun `planned payments lower safe to spend while planned income only informs projection`() {
+        val result = MonthForecast.compute(
+            balance = 500_000L,
+            monthYear = month,
+            budgets = emptyList(),
+            transactions = listOf(
+                transaction("income", 100_000L, TransactionType.INCOME),
+                transaction("expense", 20_000L, TransactionType.EXPENSE)
+            ),
+            recurring = emptyList(),
+            toBePaid = listOf(
+                plan("bill", 30_000L, TransactionType.EXPENSE),
+                plan("refund", 25_000L, TransactionType.INCOME, day = 22)
+            ),
+            today = midMonth
+        )
+        assertEquals(30_000L, result.plannedOutgoing)
+        assertEquals(25_000L, result.plannedIncoming)
+        assertEquals(2, result.plannedCount)
+        // Income left this month is 80,000; the 30,000 bill is still an obligation.
+        assertEquals(50_000L, result.safeToSpend)
+        assertEquals(40_000L, result.projectedSpend)
+        assertEquals(555_000L, result.projectedBalance)
+    }
+
+    @Test
+    fun `settled and other-month reminders never affect this forecast`() {
+        val result = MonthForecast.compute(
+            balance = 500_000L,
+            monthYear = month,
+            budgets = emptyList(),
+            transactions = listOf(
+                transaction("income", 100_000L, TransactionType.INCOME),
+                transaction("expense", 20_000L, TransactionType.EXPENSE)
+            ),
+            recurring = emptyList(),
+            toBePaid = listOf(
+                plan("settled", 90_000L, TransactionType.EXPENSE, settled = true),
+                plan("december", 40_000L, TransactionType.EXPENSE).copy(
+                    dueAt = Dates.toTimestamp(LocalDate.of(2026, 12, 2))
+                )
+            ),
+            today = midMonth
+        )
+        assertEquals(0, result.plannedCount)
+        assertEquals(0L, result.plannedOutgoing)
+        assertEquals(80_000L, result.safeToSpend)
+        assertEquals(560_000L, result.projectedBalance)
     }
 }

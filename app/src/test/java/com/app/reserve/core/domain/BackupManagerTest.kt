@@ -5,8 +5,10 @@ import com.app.reserve.core.database.AccountEntity
 import com.app.reserve.core.database.BudgetEntity
 import com.app.reserve.core.database.CategoryEntity
 import com.app.reserve.core.database.RecurringEntity
+import com.app.reserve.core.database.ToBePaidEntity
 import com.app.reserve.core.database.TransactionEntity
 import com.app.reserve.core.database.TransactionType
+import com.app.reserve.core.datastore.BackupSettings
 import com.app.reserve.core.datastore.ReserveSettings
 import com.app.reserve.core.datastore.ThemeMode
 import org.junit.Assert.assertEquals
@@ -81,6 +83,50 @@ class BackupManagerTest {
         val decoded = BackupManager.decode(BackupManager.encode(withTrash)).getOrThrow()
         assertEquals(null, decoded.transactions.first { it.id == "t1" }.deletedAt)
         assertEquals(9_999L, decoded.transactions.first { it.id == "t2" }.deletedAt)
+    }
+
+    @Test
+    fun `planned reminders and the safe-to-spend toggle round-trip in v3`() {
+        val plan = ToBePaidEntity(
+            id = "plan-1",
+            title = "Electricity bill",
+            amount = 45_050L,
+            type = TransactionType.EXPENSE,
+            categoryId = "food",
+            accountId = "cash",
+            dueAt = Dates.toTimestamp(java.time.LocalDate.of(2026, 11, 20)),
+            note = "Due Friday",
+            createdAt = 1L,
+            settledTransactionId = "t1",
+            settledAt = 2L,
+            settlementSource = "SMS_MATCH"
+        )
+        val bundle = BackupManager.decodeBundle(
+            BackupManager.encode(
+                snapshot.copy(toBePaid = listOf(plan)),
+                ReserveSettings(showSafeToSpend = true),
+                now = 4_000L
+            )
+        ).getOrThrow()
+
+        assertEquals(plan, bundle.snapshot.toBePaid.single())
+        assertEquals(true, bundle.settings?.showSafeToSpend)
+    }
+
+    @Test
+    fun `a v3 backup without additive fields keeps safe defaults`() {
+        val legacyV3 = """
+            {"version": 3, "exportedAt": 5000,
+             "accounts": [], "categories": [], "transactions": [],
+             "budgets": [], "recurring": [],
+             "settings": {"themeMode": "DARK"}}
+        """.trimIndent()
+        val bundle = BackupManager.decodeBundle(legacyV3).getOrThrow()
+
+        assertTrue(bundle.snapshot.toBePaid.isEmpty())
+        assertEquals("DARK", bundle.settings?.themeMode)
+        assertFalse(bundle.settings?.showSafeToSpend ?: true)
+        assertFalse(Json.decodeFromString<BackupSettings>("{}").showSafeToSpend)
     }
 
     @Test

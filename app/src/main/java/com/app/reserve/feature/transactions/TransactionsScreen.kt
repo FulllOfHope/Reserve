@@ -32,6 +32,8 @@ import androidx.compose.material.icons.rounded.ReceiptLong
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.SearchOff
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -64,11 +66,13 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.app.reserve.core.database.ToBePaidEntity
 import com.app.reserve.core.database.TransactionEntity
 import com.app.reserve.core.database.TransactionType
 import com.app.reserve.core.designsystem.EmptyState
 import com.app.reserve.core.designsystem.LocalAmountsHidden
 import com.app.reserve.core.designsystem.LocalReserveColors
+import com.app.reserve.core.designsystem.MoneyText
 import com.app.reserve.core.designsystem.MonthSwitcher
 import com.app.reserve.core.designsystem.radius_md
 import com.app.reserve.core.designsystem.ReserveDivider
@@ -83,7 +87,8 @@ private enum class TypeFilter(val label: String, val type: TransactionType?) {
     All("All", null),
     Expense("Expenses", TransactionType.EXPENSE),
     Income("Income", TransactionType.INCOME),
-    Transfer("Transfers", TransactionType.TRANSFER)
+    Transfer("Transfers", TransactionType.TRANSFER),
+    Planned("To Be Paid", null)
 }
 
 /** Null id = all categories, empty id = uncategorised rows. */
@@ -104,7 +109,9 @@ fun TransactionsScreen(
     onPreviousMonth: () -> Unit,
     onNextMonth: () -> Unit,
     onGoToToday: () -> Unit = {},
-    swipeToDeleteEnabled: Boolean = false
+    swipeToDeleteEnabled: Boolean = false,
+    onMarkToBePaid: (String) -> Unit = {},
+    onOpenToBePaid: () -> Unit = {}
 ) {
     val colors = LocalReserveColors.current
     var query by rememberSaveable { mutableStateOf("") }
@@ -124,6 +131,15 @@ fun TransactionsScreen(
             CategoryFilter("", "No category")
     }
     val categoryId = selectedCategory?.id
+    val showPlannedOnly = filter == TypeFilter.Planned
+    val plannedRows = state.monthToBePaid
+        .filter { item ->
+            if (query.isBlank()) return@filter true
+            val needle = query.trim()
+            item.title.contains(needle, ignoreCase = true) ||
+                item.note.contains(needle, ignoreCase = true)
+        }
+        .sortedBy { it.dueAt }
 
     val filtered = state.monthTransactions
         .filter { filter.type == null || it.type == filter.type }
@@ -326,7 +342,7 @@ fun TransactionsScreen(
             }
         }
 
-        if (filtered.isEmpty()) {
+        if ((showPlannedOnly && plannedRows.isEmpty()) || (!showPlannedOnly && filtered.isEmpty())) {
             val hasFilters = query.isNotBlank() || filter != TypeFilter.All || hasCategoryFilter
             EmptyState(
                 icon = if (hasFilters) Icons.Rounded.SearchOff else Icons.Rounded.ReceiptLong,
@@ -335,22 +351,47 @@ fun TransactionsScreen(
                 } else {
                     "No transactions this month."
                 },
-                actionLabel = if (hasFilters) "Clear filters" else null,
-                onAction = if (hasFilters) {
-                    {
-                        query = ""
-                        filter = TypeFilter.All
-                        selectedCategory = null
-                        selectedCategories = emptySet()
+                actionLabel = when {
+                    showPlannedOnly -> "Add planned"
+                    hasFilters -> "Clear filters"
+                    else -> null
+                },
+                onAction = when {
+                    showPlannedOnly -> onOpenToBePaid
+                    hasFilters -> {
+                        {
+                            query = ""
+                            filter = TypeFilter.All
+                            selectedCategory = null
+                            selectedCategories = emptySet()
+                        }
                     }
-                } else null
+                    else -> null
+                }
             )
         } else {
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 108.dp)
             ) {
-                if (sort == TransactionSort.Newest) {
+                if (showPlannedOnly) {
+                    item(key = "planned-header") {
+                        Text(
+                            text = "TO BE PAID · ${state.monthToBePaid.size} PLANNED",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = colors.textLighter,
+                            modifier = Modifier.padding(
+                                start = 16.dp, end = 16.dp, top = 16.dp, bottom = 6.dp
+                            )
+                        )
+                    }
+                    items(items = plannedRows, key = { it.id }) { item ->
+                        PlannedTransactionRow(
+                            item = item,
+                            onMarkPaid = { onMarkToBePaid(item.id) }
+                        )
+                    }
+                } else if (sort == TransactionSort.Newest) {
                     grouped.forEach { (date, dayTransactions) ->
                         item(key = "header-$date") {
                             DayHeader(
@@ -424,6 +465,62 @@ fun TransactionsScreen(
             },
             onDone = { showCategorySheet = false },
             onDismiss = { showCategorySheet = false }
+        )
+    }
+}
+
+@Composable
+private fun PlannedTransactionRow(
+    item: ToBePaidEntity,
+    onMarkPaid: () -> Unit
+) {
+    val colors = LocalReserveColors.current
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Checkbox(
+            checked = false,
+            onCheckedChange = { checked -> if (checked) onMarkPaid() },
+            colors = CheckboxDefaults.colors(
+                checkedColor = colors.primaryDefault,
+                uncheckedColor = colors.textLighter
+            )
+        )
+        Spacer(modifier = Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = item.title,
+                style = MaterialTheme.typography.bodyMedium,
+                color = colors.textBase,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = buildString {
+                    append(Dates.fullDate(item.dueAt))
+                    if (item.note.isNotBlank()) {
+                        append(" · ")
+                        append(item.note)
+                    }
+                },
+                style = MaterialTheme.typography.labelSmall,
+                color = colors.textLighter,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+        Spacer(modifier = Modifier.width(8.dp))
+        MoneyText(
+            amount = item.amount,
+            style = MaterialTheme.typography.titleMedium,
+            color = if (item.type == TransactionType.INCOME) {
+                colors.primaryDefault
+            } else {
+                colors.textBase
+            }
         )
     }
 }

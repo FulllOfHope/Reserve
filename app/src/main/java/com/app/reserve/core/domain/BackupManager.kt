@@ -8,6 +8,7 @@ import com.app.reserve.core.datastore.toBackupSettings
 import com.app.reserve.core.database.BudgetEntity
 import com.app.reserve.core.database.CategoryEntity
 import com.app.reserve.core.database.RecurringEntity
+import com.app.reserve.core.database.ToBePaidEntity
 import com.app.reserve.core.database.TransactionEntity
 import com.app.reserve.core.database.TransactionType
 import kotlinx.serialization.Serializable
@@ -18,8 +19,10 @@ import kotlinx.serialization.json.Json
 object BackupManager {
 
     /**
-     * v2 added `deletedAt` tombstones, v3 adds all DataStore settings and the
-     * account opening balance. Older versions remain importable via field defaults.
+     * v2 added `deletedAt` tombstones, v3 added DataStore settings and the
+     * account opening balance. Later additive fields (planned reminders, the
+     * Safe-to-Spend preference) stay on v3 so older backups remain importable
+     * purely through serializer defaults.
      */
     const val CURRENT_VERSION = 3
 
@@ -47,6 +50,7 @@ object BackupManager {
             transactions = snapshot.transactions.map { it.toDto() },
             budgets = snapshot.budgets.map { it.toDto() },
             recurring = snapshot.recurring.map { it.toDto() },
+            toBePaid = snapshot.toBePaid.map { it.toDto() },
             settings = settings?.toBackupSettings()
         )
         return json.encodeToString(dto)
@@ -82,7 +86,8 @@ object BackupManager {
                 categories = dto.categories.map { it.toEntity() },
                 transactions = dto.transactions.map { it.toEntity() },
                 budgets = dto.budgets.map { it.toEntity() },
-                recurring = dto.recurring.map { it.toEntity() }
+                recurring = dto.recurring.map { it.toEntity() },
+                toBePaid = dto.toBePaid.map { it.toEntity() }
             ),
             settings = dto.settings,
             exportedAt = dto.exportedAt
@@ -114,6 +119,8 @@ data class BackupDto(
     val transactions: List<BackupTransaction> = emptyList(),
     val budgets: List<BackupBudget> = emptyList(),
     val recurring: List<BackupRecurring> = emptyList(),
+    /** Additive in v3; absent in older backups and in older v3 files. */
+    val toBePaid: List<BackupToBePaid> = emptyList(),
     /** Absent in v1/v2 backups. */
     val settings: BackupSettings? = null
 )
@@ -214,4 +221,51 @@ data class BackupRecurring(
 
 fun RecurringEntity.toDto() = BackupRecurring(
     id, amount, type.name, categoryId, accountId, targetAccountId, note, dayOfMonth, nextDueAt, paused
+)
+
+@Serializable
+data class BackupToBePaid(
+    val id: String,
+    val title: String,
+    val amount: Long,
+    val type: String,
+    val categoryId: String? = null,
+    val accountId: String,
+    val dueAt: Long,
+    val note: String = "",
+    val createdAt: Long = 0L,
+    val settledTransactionId: String? = null,
+    val settledAt: Long? = null,
+    val settlementSource: String? = null
+) {
+    fun toEntity() = ToBePaidEntity(
+        id = id,
+        title = title,
+        amount = amount,
+        type = runCatching { TransactionType.valueOf(type) }
+            .getOrDefault(TransactionType.EXPENSE),
+        categoryId = categoryId,
+        accountId = accountId,
+        dueAt = dueAt,
+        note = note,
+        createdAt = createdAt,
+        settledTransactionId = settledTransactionId,
+        settledAt = settledAt,
+        settlementSource = settlementSource
+    )
+}
+
+fun ToBePaidEntity.toDto() = BackupToBePaid(
+    id = id,
+    title = title,
+    amount = amount,
+    type = type.name,
+    categoryId = categoryId,
+    accountId = accountId,
+    dueAt = dueAt,
+    note = note,
+    createdAt = createdAt,
+    settledTransactionId = settledTransactionId,
+    settledAt = settledAt,
+    settlementSource = settlementSource
 )

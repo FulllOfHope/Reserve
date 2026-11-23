@@ -10,6 +10,7 @@ import com.app.reserve.core.data.ReserveRepository
 import com.app.reserve.core.data.SmsBalanceObservation
 import com.app.reserve.core.datastore.SettingsDataStore
 import com.app.reserve.core.domain.ParsedSms
+import com.app.reserve.core.domain.PendingToBePaidMatch
 import com.app.reserve.core.domain.SmsParser
 import com.app.reserve.core.domain.SmsScanWindow
 import kotlinx.coroutines.Dispatchers
@@ -35,7 +36,8 @@ data class SmsScanOutcome(
 class SmsImporter(
     context: Context,
     private val repository: ReserveRepository,
-    private val settings: SettingsDataStore
+    private val settings: SettingsDataStore,
+    private val toBePaidNotifier: ToBePaidNotifier? = null
 ) {
     private val appContext = context.applicationContext
 
@@ -62,6 +64,7 @@ class SmsImporter(
         suspend fun flush() {
             if (batch.isEmpty()) return
             val result = repository.importSmsMessages(batch.toList())
+            notifyPlannedMatches(result.pendingToBePaidMatches)
             imported += result.imported
             duplicates += result.duplicates
             createdAccountIds += result.createdAccountIds
@@ -160,6 +163,7 @@ class SmsImporter(
             } ?: return@withContext false
 
             val result = repository.importSmsMessages(listOf(parsed))
+            notifyPlannedMatches(result.pendingToBePaidMatches)
             runCatching {
                 repository.finishSmsImport(result.createdAccountIds, result.newestBalances)
             }
@@ -223,6 +227,11 @@ class SmsImporter(
                 best
             }
         }.getOrNull()
+    }
+
+    private fun notifyPlannedMatches(matches: List<PendingToBePaidMatch>) {
+        val notifier = toBePaidNotifier ?: return
+        matches.forEach { match -> runCatching { notifier.show(match) } }
     }
 
     fun canReadSms(): Boolean =

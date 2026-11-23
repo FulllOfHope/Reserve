@@ -15,9 +15,10 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         AccountEntity::class,
         BudgetEntity::class,
         RecurringEntity::class,
-        SmsImportEntity::class
+        SmsImportEntity::class,
+        ToBePaidEntity::class
     ],
-    version = 4,
+    version = 5,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -28,6 +29,7 @@ abstract class ReserveDatabase : RoomDatabase() {
     abstract fun budgetDao(): BudgetDao
     abstract fun recurringDao(): RecurringDao
     abstract fun smsImportDao(): SmsImportDao
+    abstract fun toBePaidDao(): ToBePaidDao
 
     companion object {
         @Volatile
@@ -63,6 +65,29 @@ abstract class ReserveDatabase : RoomDatabase() {
             }
         }
 
+        /** v5 adds one-off future reminders. Additive only; no existing rows change. */
+        val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `to_be_paid` (" +
+                        "`id` TEXT NOT NULL, " +
+                        "`title` TEXT NOT NULL, " +
+                        "`amount` INTEGER NOT NULL, " +
+                        "`type` TEXT NOT NULL, " +
+                        "`categoryId` TEXT, " +
+                        "`accountId` TEXT NOT NULL, " +
+                        "`dueAt` INTEGER NOT NULL, " +
+                        "`note` TEXT NOT NULL DEFAULT '', " +
+                        "`createdAt` INTEGER NOT NULL DEFAULT 0, " +
+                        "`settledTransactionId` TEXT, " +
+                        "`settledAt` INTEGER, " +
+                        "`settlementSource` TEXT, " +
+                        "PRIMARY KEY(`id`))"
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_to_be_paid_dueAt` ON `to_be_paid` (`dueAt`)")
+            }
+        }
+
         fun get(context: Context): ReserveDatabase =
             instance ?: synchronized(this) {
                 instance ?: Room.databaseBuilder(
@@ -70,7 +95,7 @@ abstract class ReserveDatabase : RoomDatabase() {
                     ReserveDatabase::class.java,
                     "reserve.db"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
                     .fallbackToDestructiveMigration()
                     .openHelperFactory(net.zetetic.database.sqlcipher.SupportOpenHelperFactory(DbSecurity.getPassphrase(context)))
                     .build()
