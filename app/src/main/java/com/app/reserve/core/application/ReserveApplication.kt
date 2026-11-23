@@ -69,7 +69,9 @@ class AppContainer(application: Application) {
     val database: ReserveDatabase = ReserveDatabase.get(application)
     val settings = SettingsDataStore(application)
     val repository = ReserveRepository(database, settings)
-    val toBePaidNotifier = ToBePaidNotifier(application)
+    // Never let an optional notification helper abort app startup.
+    val toBePaidNotifier: ToBePaidNotifier? =
+        runCatching { ToBePaidNotifier(application) }.getOrNull()
     val smsImporter = SmsImporter(application, repository, settings, toBePaidNotifier)
     val updateChecker = GitHubUpdateChecker(currentVersion = installedVersion(application))
     val updateNotifier = UpdateNotifier(application)

@@ -745,7 +745,11 @@ private fun SwipeRow(
                     transaction = transaction,
                     category = state.categoryFor(transaction.categoryId),
                     accountName = state.accountName(transaction.accountId),
-                    onClick = onEdit
+                    onClick = onEdit,
+                    onLongClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        confirmDelete = true
+                    }
                 )
                 ReserveDivider()
             }
@@ -779,7 +783,7 @@ private fun SwipeRow(
         rowContent()
     }
 
-    if (swipeToDeleteEnabled && confirmDelete) {
+    if (confirmDelete) {
         AlertDialog(
             onDismissRequest = { confirmDelete = false },
             containerColor = colors.fillLight,

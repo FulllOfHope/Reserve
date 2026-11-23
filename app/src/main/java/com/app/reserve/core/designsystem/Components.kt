@@ -6,9 +6,11 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -240,13 +242,15 @@ fun CategoryAvatar(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun TransactionRow(
     transaction: TransactionEntity,
     category: CategoryEntity?,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    accountName: String? = null
+    accountName: String? = null,
+    onLongClick: (() -> Unit)? = null
 ) {
     val colors = LocalReserveColors.current
     val note = transaction.note.trim()
@@ -279,10 +283,15 @@ fun TransactionRow(
             append(bankLabel)
         }
     }
+    val rowClick = if (onLongClick == null) {
+        Modifier.clickable(onClick = onClick)
+    } else {
+        Modifier.combinedClickable(onClick = onClick, onLongClick = onLongClick)
+    }
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            .then(rowClick)
             .padding(horizontal = EnteSpacing.xxl, vertical = EnteSpacing.md),
         verticalAlignment = Alignment.CenterVertically
     ) {

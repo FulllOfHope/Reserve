@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -24,8 +25,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AccountBalance
 import androidx.compose.material.icons.outlined.Backup
@@ -867,7 +870,7 @@ private fun MainNavigation(
         AlertDialog(
             onDismissRequest = {
                 ledgerViewModel.dismissToBePaidMatch(currentPlannedMatch)
-                application.container.toBePaidNotifier.cancel(currentPlannedMatch)
+                application.container.toBePaidNotifier?.cancel(currentPlannedMatch)
             },
             containerColor = colors.fillLight,
             titleContentColor = colors.textBase,
@@ -883,7 +886,7 @@ private fun MainNavigation(
             confirmButton = {
                 TextButton(onClick = {
                     ledgerViewModel.confirmToBePaidMatch(currentPlannedMatch)
-                    application.container.toBePaidNotifier.cancel(currentPlannedMatch)
+                    application.container.toBePaidNotifier?.cancel(currentPlannedMatch)
                 }) {
                     Text("Yes, link it", color = colors.primaryDefault)
                 }
@@ -891,7 +894,7 @@ private fun MainNavigation(
             dismissButton = {
                 TextButton(onClick = {
                     ledgerViewModel.dismissToBePaidMatch(currentPlannedMatch)
-                    application.container.toBePaidNotifier.cancel(currentPlannedMatch)
+                    application.container.toBePaidNotifier?.cancel(currentPlannedMatch)
                 }) {
                     Text("No, keep separate", color = colors.textLight)
                 }
@@ -910,104 +913,110 @@ private fun MainNavigation(
                 drawerContainerColor = colors.fillBase,
                 modifier = Modifier.width(280.dp)
             ) {
-                // Header: official r ₹ mark inside a 44.dp squircle.
-                Row(
+                Column(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 20.dp, vertical = 24.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                        .fillMaxHeight()
+                        .verticalScroll(rememberScrollState())
                 ) {
-                    Box(
+                    // Header: official r ₹ mark inside a 44.dp squircle.
+                    Row(
                         modifier = Modifier
-                            .size(44.dp)
-                            .clip(RoundedCornerShape(14.dp))
-                            .background(colors.surface)
-                            .border(1.dp, colors.strokeFaint, RoundedCornerShape(14.dp)),
-                        contentAlignment = Alignment.Center
+                            .fillMaxWidth()
+                            .padding(horizontal = 20.dp, vertical = 24.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Image(
-                            painter = painterResource(id = R.drawable.ic_launcher_monochrome),
-                            contentDescription = "Reserve",
-                            modifier = Modifier.size(28.dp)
-                        )
-                    }
-                    Spacer(Modifier.width(12.dp))
-                    Column {
-                        Text(
-                            "Reserve",
-                            style = MaterialTheme.typography.titleLarge.copy(
-                                fontSize = 20.sp, fontWeight = FontWeight.ExtraBold
-                            ),
-                            color = colors.textBase
-                        )
-                        Text(
-                            "Offline Ledger",
-                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
-                            color = colors.textLighter
-                        )
-                    }
-                }
-
-                // Group 1 — organise
-                DrawerItem("Categories", Icons.Outlined.Category) {
-                    navController.navigate(Routes.Categories) { launchSingleTop = true }
-                }
-                DrawerItem("Accounts", Icons.Outlined.AccountBalance) {
-                    navController.navigate(Routes.Accounts) { launchSingleTop = true }
-                }
-                DrawerItem("Budgets", Icons.Outlined.PieChart) {
-                    navController.navigate(Routes.Budgets) { launchSingleTop = true }
-                }
-                DrawerItem("Recurring", Icons.Outlined.Repeat) {
-                    navController.navigate(Routes.Recurring) { launchSingleTop = true }
-                }
-                DrawerItem("To Be Paid", Icons.Outlined.CalendarMonth) {
-                    navController.navigate(Routes.ToBePaid) { launchSingleTop = true }
-                }
-
-                DrawerGroupDivider()
-
-                // Group 2 — preferences
-                DrawerItem("Settings", Icons.Outlined.Settings) {
-                    scope.launch {
-                        if (currentRoute == Routes.Home) {
-                            pagerState.animateScrollToPage(3, animationSpec = tween(200))
-                        } else {
-                            navController.navigate(Routes.Settings) { launchSingleTop = true }
+                        Box(
+                            modifier = Modifier
+                                .size(44.dp)
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(colors.surface)
+                                .border(1.dp, colors.strokeFaint, RoundedCornerShape(14.dp)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Image(
+                                painter = painterResource(id = R.drawable.ic_launcher_monochrome),
+                                contentDescription = "Reserve",
+                                modifier = Modifier.size(28.dp)
+                            )
+                        }
+                        Spacer(Modifier.width(12.dp))
+                        Column {
+                            Text(
+                                "Reserve",
+                                style = MaterialTheme.typography.titleLarge.copy(
+                                    fontSize = 20.sp, fontWeight = FontWeight.ExtraBold
+                                ),
+                                color = colors.textBase
+                            )
+                            Text(
+                                "Offline Ledger",
+                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
+                                color = colors.textLighter
+                            )
                         }
                     }
-                }
 
-                DrawerGroupDivider()
+                    // Group 1 — organise
+                    DrawerItem("Categories", Icons.Outlined.Category) {
+                        navController.navigate(Routes.Categories) { launchSingleTop = true }
+                    }
+                    DrawerItem("Accounts", Icons.Outlined.AccountBalance) {
+                        navController.navigate(Routes.Accounts) { launchSingleTop = true }
+                    }
+                    DrawerItem("Budgets", Icons.Outlined.PieChart) {
+                        navController.navigate(Routes.Budgets) { launchSingleTop = true }
+                    }
+                    DrawerItem("Recurring", Icons.Outlined.Repeat) {
+                        navController.navigate(Routes.Recurring) { launchSingleTop = true }
+                    }
+                    DrawerItem("To Be Paid", Icons.Outlined.CalendarMonth) {
+                        navController.navigate(Routes.ToBePaid) { launchSingleTop = true }
+                    }
 
-                // Group 3 — data
-                DrawerItem("Export CSV", Icons.Outlined.FileUpload) {
-                    exportLauncher.launch("reserve-${LocalDate.now()}.csv")
-                }
-                DrawerItem("Import CSV", Icons.Outlined.FileDownload) {
-                    importLauncher.launch(arrayOf("text/csv", "text/comma-separated-values", "text/plain"))
-                }
-                DrawerItem("Smart import", Icons.Outlined.Description) {
-                    smartImportLauncher.launch(
-                        arrayOf(
-                            "text/csv", "text/comma-separated-values", "text/plain",
-                            "text/tab-separated-values", "application/json",
-                            "application/zip", "application/x-zip-compressed", "*/*"
+                    DrawerGroupDivider()
+
+                    // Group 2 — preferences
+                    DrawerItem("Settings", Icons.Outlined.Settings) {
+                        scope.launch {
+                            if (currentRoute == Routes.Home) {
+                                pagerState.animateScrollToPage(3, animationSpec = tween(200))
+                            } else {
+                                navController.navigate(Routes.Settings) { launchSingleTop = true }
+                            }
+                        }
+                    }
+
+                    DrawerGroupDivider()
+
+                    // Group 3 — data
+                    DrawerItem("Export CSV", Icons.Outlined.FileUpload) {
+                        exportLauncher.launch("reserve-${LocalDate.now()}.csv")
+                    }
+                    DrawerItem("Import CSV", Icons.Outlined.FileDownload) {
+                        importLauncher.launch(arrayOf("text/csv", "text/comma-separated-values", "text/plain"))
+                    }
+                    DrawerItem("Smart import", Icons.Outlined.Description) {
+                        smartImportLauncher.launch(
+                            arrayOf(
+                                "text/csv", "text/comma-separated-values", "text/plain",
+                                "text/tab-separated-values", "application/json",
+                                "application/zip", "application/x-zip-compressed", "*/*"
+                            )
                         )
-                    )
-                }
-                DrawerItem("Create Backup", Icons.Outlined.Backup) {
-                    backupLauncher.launch("reserve-backup-${LocalDate.now()}.json")
-                }
-                DrawerItem("Restore Backup", Icons.Outlined.Restore) {
-                    showDrawerRestoreSheet = true
-                }
-                DrawerItem(
-                    label = "Trash",
-                    icon = Icons.Outlined.DeleteOutline,
-                    badgeCount = state.trashedTransactions.size
-                ) {
-                    navController.navigate(Routes.Trash) { launchSingleTop = true }
+                    }
+                    DrawerItem("Create Backup", Icons.Outlined.Backup) {
+                        backupLauncher.launch("reserve-backup-${LocalDate.now()}.json")
+                    }
+                    DrawerItem("Restore Backup", Icons.Outlined.Restore) {
+                        showDrawerRestoreSheet = true
+                    }
+                    DrawerItem(
+                        label = "Trash",
+                        icon = Icons.Outlined.DeleteOutline,
+                        badgeCount = state.trashedTransactions.size
+                    ) {
+                        navController.navigate(Routes.Trash) { launchSingleTop = true }
+                    }
                 }
             }
         }
@@ -1141,6 +1150,9 @@ private fun MainNavigation(
                                         onOpenMenu = { scope.launch { drawerState.open() } },
                                         onToggleHideAmounts = onToggleHideAmounts,
                                         onChooseBalanceAccounts = onChooseBalanceAccounts,
+                                        onSetBalance = { accountId, amount ->
+                                            ledgerViewModel.setAccountBalance(accountId, amount)
+                                        },
                                         onSetCategory = { transaction, categoryId ->
                                             ledgerViewModel.setTransactionCategory(transaction, categoryId)
                                         },
@@ -1463,7 +1475,7 @@ private fun DrawerGroupDivider() {
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 12.dp)
+            .padding(horizontal = 12.dp, vertical = 6.dp)
             .height(1.dp)
             .background(colors.strokeFaint)
     )

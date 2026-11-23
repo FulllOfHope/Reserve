@@ -1,7 +1,9 @@
 package com.app.reserve.feature.home
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -21,7 +23,10 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CalendarMonth
@@ -71,6 +76,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import com.app.reserve.core.designsystem.EnteButton
 import com.app.reserve.core.designsystem.radius_md
 import com.app.reserve.core.designsystem.spacing_md
 import com.app.reserve.core.designsystem.spacing_sm
@@ -79,8 +89,10 @@ import com.app.reserve.core.designsystem.tabular
 import com.app.reserve.core.domain.BudgetCalculator
 import com.app.reserve.core.domain.Dates
 import com.app.reserve.core.domain.MonthForecast
+import com.app.reserve.core.domain.Money
 import com.app.reserve.feature.ledger.LedgerState
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun HomeScreen(
     state: LedgerState,
@@ -95,6 +107,7 @@ fun HomeScreen(
     onOpenMenu: () -> Unit,
     onToggleHideAmounts: (Boolean) -> Unit = {},
     onChooseBalanceAccounts: (Set<String>?) -> Unit = {},
+    onSetBalance: (String, Long) -> Unit = { _, _ -> },
     onSetCategory: (TransactionEntity, String) -> Unit = { _, _ -> },
     showSafeToSpend: Boolean = false,
     onOpenToBePaid: () -> Unit = {},
@@ -103,12 +116,14 @@ fun HomeScreen(
 ) {
     val colors = LocalReserveColors.current
     val amountsHidden = LocalAmountsHidden.current
+    val haptic = LocalHapticFeedback.current
     val recent = state.monthTransactions.sortedByDescending { it.timestamp }.take(3)
     val budgets = state.monthBudgets
     val upcomingPlans = state.outstandingToBePaid.sortedBy { it.dueAt }.take(3)
     var activeActionSheetTransaction by remember { mutableStateOf<TransactionEntity?>(null) }
     var categoryPickerTransaction by remember { mutableStateOf<TransactionEntity?>(null) }
     var showBalanceAccounts by remember { mutableStateOf(false) }
+    var showBalanceEditor by remember { mutableStateOf(false) }
     var showForecast by remember { mutableStateOf(false) }
     val forecast = MonthForecast.compute(
         balance = state.totalBalance,
@@ -146,7 +161,19 @@ fun HomeScreen(
                     Column(modifier = Modifier.padding(22.dp)) {
                         Box(modifier = Modifier.fillMaxWidth()) {
                             Column(
-                                modifier = Modifier.fillMaxWidth(),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .combinedClickable(
+                                        onClick = {},
+                                        onLongClick = {
+                                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                            if (state.balanceAccounts.isEmpty()) {
+                                                showBalanceAccounts = true
+                                            } else {
+                                                showBalanceEditor = true
+                                            }
+                                        }
+                                    ),
                                 horizontalAlignment = Alignment.CenterHorizontally
                             ) {
                                 Text(
@@ -177,6 +204,17 @@ fun HomeScreen(
                                     },
                                     style = MaterialTheme.typography.bodySmall,
                                     color = colors.textLight,
+                                    textAlign = TextAlign.Center
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = if (state.balanceAccounts.isEmpty()) {
+                                        "Choose accounts to edit balances"
+                                    } else {
+                                        "Long press to correct balance"
+                                    },
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = colors.textLighter,
                                     textAlign = TextAlign.Center
                                 )
                             }
@@ -285,7 +323,7 @@ fun HomeScreen(
             }
 
             item {
-                Spacer(modifier = Modifier.height(24.dp))
+                Spacer(modifier = Modifier.height(12.dp))
             }
 
             item {
@@ -361,7 +399,7 @@ fun HomeScreen(
             }
 
             item {
-                Spacer(modifier = Modifier.height(24.dp))
+                Spacer(modifier = Modifier.height(12.dp))
             }
 
             item {
@@ -470,6 +508,17 @@ fun HomeScreen(
                 showBalanceAccounts = false
             },
             onDismiss = { showBalanceAccounts = false }
+        )
+    }
+
+    if (showBalanceEditor) {
+        CurrentBalanceEditorSheet(
+            accounts = state.balanceAccounts,
+            onSave = { changes ->
+                changes.forEach { (accountId, amount) -> onSetBalance(accountId, amount) }
+                showBalanceEditor = false
+            },
+            onDismiss = { showBalanceEditor = false }
         )
     }
 
@@ -791,6 +840,93 @@ private fun BalanceAccountsSheet(
                 ) {
                     Text("Done", color = colors.primaryDefault)
                 }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CurrentBalanceEditorSheet(
+    accounts: List<AccountEntity>,
+    onSave: (List<Pair<String, Long>>) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val colors = LocalReserveColors.current
+    var values by remember(accounts) {
+        mutableStateOf(accounts.associate { it.id to Money.format(it.balance) })
+    }
+    val changes = accounts.mapNotNull { account ->
+        val parsed = Money.parse(values[account.id].orEmpty())
+        if (parsed != null && parsed != account.balance) account.id to parsed else null
+    }
+    val allValid = values.values.all { Money.parse(it) != null }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = colors.surface,
+        contentWindowInsets = { WindowInsets.ime },
+        shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
+        tonalElevation = 0.dp
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 24.dp)
+                .padding(bottom = 24.dp)
+        ) {
+            SheetHandle()
+            Spacer(Modifier.height(20.dp))
+            Text(
+                text = "Correct current balance",
+                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.ExtraBold),
+                color = colors.textBase
+            )
+            Spacer(Modifier.height(spacing_sm))
+            Text(
+                text = "Adjusts each selected account's opening balance. No transaction is added and past rows stay intact.",
+                style = MaterialTheme.typography.bodySmall,
+                color = colors.textLighter
+            )
+            Spacer(Modifier.height(spacing_md))
+
+            accounts.forEach { account ->
+                val raw = values[account.id].orEmpty()
+                OutlinedTextField(
+                    value = raw,
+                    onValueChange = { values = values + (account.id to it) },
+                    label = { Text(account.name) },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    isError = Money.parse(raw) == null,
+                    shape = RoundedCornerShape(radius_md),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = colors.primaryDefault,
+                        unfocusedBorderColor = colors.strokeFaint,
+                        focusedTextColor = colors.textBase,
+                        unfocusedTextColor = colors.textBase,
+                        focusedLabelColor = colors.textLight,
+                        unfocusedLabelColor = colors.textLighter,
+                        cursorColor = colors.primaryDefault
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(Modifier.height(spacing_sm))
+            }
+
+            EnteButton(
+                text = "Save balances",
+                enabled = allValid && changes.isNotEmpty(),
+                modifier = Modifier.fillMaxWidth(),
+                onClick = { onSave(changes) }
+            )
+            Spacer(Modifier.height(spacing_sm))
+            TextButton(
+                onClick = onDismiss,
+                modifier = Modifier.align(Alignment.CenterHorizontally)
+            ) {
+                Text("Cancel", color = colors.textLight)
             }
         }
     }
